@@ -66,7 +66,9 @@ eval.test <- function(sim.location, group, res.mat, adjust='BH', alpha = 0.05) {
 
     # named vector of p.vals for test rep x
     p.val <- res[,x]
-    p.val <- p.adjust(p.val, method=adjust)
+    if (!adjust %in% c("PASS", "pass")) {
+      p.val <- p.adjust(p.val, method=adjust)
+    }
     # auc
     auroc <- roc(predictor = -log10(p.val + 1e-50), response = marker,
                  levels = c(0, 1), direction = '<')
