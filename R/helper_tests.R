@@ -50,6 +50,8 @@ run.test <- function(data, label, test, conf){
     p.val <- test.ANCOM(data=data, label=label, conf=conf)
   } else if (test == 'ANCOMBC'){
     p.val <- test.ANCOMBC(data=data, label=label, conf=conf)
+  } else if (test == 'ANCOMBC2'){
+    p.val <- test.ANCOMBC2(data=data, label=label, conf=conf)
   } else if (test=='corncob'){
     p.val <- test.corncob(data=data, label=label, conf=conf)
   } else if (test=='limma'){
@@ -518,6 +520,43 @@ test.ANCOMBC <- function(data, label, conf){
   p.val <- rep(1, nrow(data))
   names(p.val) <- rownames(data)
   p.val[rownames(temp$res$q_val)] <- temp$res$p_val$label
+  return(p.val)
+}
+
+#' @keywords internal
+test.ANCOMBC2 <- function(data, label, conf){
+  #devtools::load_all("/projects/arumugam/people/mjq180/git/ANCOMBC")
+  test.package('ANCOMBC')
+  test.package("phyloseq")
+  # deal with nonunique samples from biased idx generation
+  names(label) <- paste0(names(label), '_', seq_along(label))
+  colnames(data) <- paste0(colnames(data), '_', seq_along(label))
+  label <- label + 1
+  label <- label/2
+  if (is.null(conf)){
+    s.data <- data.frame(label=label, dummy=2)
+    f.form <- 'label'
+  } else {
+    s.data <- cbind(data.frame(label=label, dummy=2), conf)
+    f.form <- paste0('label+', paste(colnames(conf), collapse = '+'))
+  }
+  x.phylo <- phyloseq::phyloseq(
+    otu_table = phyloseq::otu_table(data, taxa_are_rows = TRUE),
+    sample_data = phyloseq::sample_data(s.data))
+  temp <- ancombc2(data = x.phylo,
+                            fix_formula = f.form,
+                            rand_formula = NULL,
+                            p_adj_method = "fdr",
+                            prv_cut = 0.1,
+                            lib_cut = 1000,
+                            group = "label",
+                            struc_zero = TRUE,
+                            neg_lb = TRUE,
+                            alpha = 0.05
+                            )
+  p.val <- rep(1, nrow(data))
+  names(p.val) <- rownames(data)
+  p.val[temp$res$taxon] <- temp$res$p_label
   return(p.val)
 }
 
