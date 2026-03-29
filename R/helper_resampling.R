@@ -25,6 +25,11 @@ simulate.resampling <- function(feat, meta, sim.out, sim.params){
     balanced <- TRUE
   }
 
+  # optional fixed-label mode via 'fixed.labels=TRUE' in sim.params
+  fixed.labels <- isTRUE(sim.params$fixed.labels)
+  label.col    <- if ('label.col' %in% names(sim.params)) sim.params$label.col else NULL
+  case.value   <- if ('case.value' %in% names(sim.params)) sim.params$case.value else NULL
+  control.value <- if ('control.value' %in% names(sim.params)) sim.params$control.value else NULL
 
   if (conf == 'None'){
     conf <- NULL
@@ -107,6 +112,56 @@ simulate.resampling <- function(feat, meta, sim.out, sim.params){
     }
   }
 
+  ## prepare a fixed label vector once if requested
+  if (fixed.labels){
+    stopifnot(!is.null(label.col))
+    stopifnot(label.col %in% colnames(meta))
+
+    raw.label <- meta[, label.col]
+    names(raw.label) <- rownames(meta)
+
+    keep <- !is.na(raw.label)
+    raw.label <- raw.label[keep]
+
+    if (!is.null(prob)){
+      common.samples <- intersect(names(prob), names(raw.label))
+      raw.label <- raw.label[common.samples]
+      prob <- prob[common.samples]
+      if (!is.null(conf) && exists("conf.label")){
+        conf.label <- conf.label[common.samples]
+      }
+    }
+
+    ## recode to -1 / +1
+    if (!is.null(case.value) && !is.null(control.value)){
+      label.fixed <- ifelse(raw.label == case.value, 1,
+                            ifelse(raw.label == control.value, -1, NA))
+    } else {
+      u <- unique(raw.label)
+      u <- u[!is.na(u)]
+      stopifnot(length(u) == 2)
+      label.fixed <- ifelse(raw.label == u[1], -1, 1)
+      warning("fixed.labels=TRUE but case/control values not supplied; ",
+              "mapped first observed label to -1 and second to +1.")
+    }
+
+    keep2 <- !is.na(label.fixed)
+    label.fixed <- label.fixed[keep2]
+    names(label.fixed) <- names(raw.label)[keep2]
+
+    stopifnot(all(label.fixed %in% c(-1, 1)))
+    num.sample <- length(label.fixed)
+
+    ## consistency check
+    observed.balance <- mean(label.fixed == 1)
+    if (!is.null(class.balance) && abs(observed.balance - class.balance) > 1e-3){
+      message("++ fixed.labels=TRUE: ignoring sim.params$class.balance = ",
+              class.balance,
+              " and using observed balance = ",
+              round(observed.balance, 4))
+    }
+  }
+
   # actual implantation
   pb <- progress_bar$new(total = length(ab.scale)*length(prev.scale)*repeats)
   for (a in seq_along(ab.scale)){
@@ -145,14 +200,28 @@ simulate.resampling <- function(feat, meta, sim.out, sim.params){
         }
 
         # generate label
-        label <- rep(-1, num.sample)
-        s <- sample(num.sample,
-                    size=round(num.sample*class.balance),
-                    prob=prob+1e-20)
-        names(label) <- names(prob)
-        label[s] <- +1 # switch random half of the samples to positive class
+        if (isTRUE(sim.params$fixed.labels)) {
+          label <- meta[[sim.params$label.col]]
+          names(label) <- rownames(meta)
 
-        feat.tmp <- feat[,names(label)]
+          # recode to -1 / +1
+          label <- ifelse(label == sim.params$case.value, 1, -1)
+
+          # keep only samples with non-missing labels
+          keep <- !is.na(label)
+          label <- label[keep]
+          feat.tmp <- feat[, names(label), drop = FALSE]
+          num.sample <- length(label)
+        } else {
+          label <- rep(-1, num.sample)
+          s <- sample(num.sample,
+                      size=round(num.sample*class.balance),
+                      prob=prob+1e-20)
+          names(label) <- names(prob)
+          label[s] <- +1 # switch random half of the samples to positive class
+
+          feat.tmp <- feat[,names(label)]
+        }
 
         # sample markers
         marker.idx <- sample(el.feat.names,
