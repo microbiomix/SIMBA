@@ -350,7 +350,7 @@ clean.meta.data <- function(df.meta){
   }
 }
 
-# check simulation parameters
+# check filtering parameters
 #' @keywords internal
 check.filtering.parameters <- function(filt.params){
   
@@ -567,7 +567,7 @@ check.common.simulation.parameters <- function(sim.params, meta, sim.method){
       stop("Parameter 'class.balance' should be numeric")
     } else if (class.balance > 0.85){
       stop("Parameter 'class.balance' seems too high (", class.balance, ")")
-    } else if (class.balance < 0.45){
+    } else if (class.balance < 0.15){
       stop("Parameter 'class.balance' seems too low (", class.balance, ")")
     }
   }
