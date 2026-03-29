@@ -55,6 +55,9 @@ apply.test <- function(sim.location, group, type='default',
 
   for (g in names(all)){
 
+    # skip metadata entry if present
+    if (g == "meta") next
+
     # reconstruct abundance table
     feat.sim <- all[[g]]$features
     markers <- all[[g]]$markers
@@ -62,6 +65,7 @@ apply.test <- function(sim.location, group, type='default',
     log.n0 <- all[[g]]$log.n0
     conf.l <- all[[g]]$conf
 
+    # Build full confounder matrix for this group
     if (!is.null(meta.all) & !is.null(conf.l)){
       conf.mat <- cbind(meta.all, conf.l)
       colnames(conf.mat)[ncol(conf.mat)] <- 'conf'
