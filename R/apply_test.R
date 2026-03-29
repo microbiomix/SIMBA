@@ -355,7 +355,7 @@ check.testing.parameters <- function(sim.location, group, type,
 
     all[[g]]$markers <- complete.group$marker_idx
     if (!is.null(conf) & any(conf!='conf')){
-      all[[meta]] <- h5read(sim.location, 'original_data/metadata')
+      all[["meta"]] <- h5read(sim.location, 'original_data/metadata')
     }
   }
   return(all)
