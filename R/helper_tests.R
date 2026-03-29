@@ -515,11 +515,11 @@ test.ANCOMBC <- function(data, label, conf){
   x.phylo <- phyloseq::phyloseq(
     otu_table = phyloseq::otu_table(data, taxa_are_rows = TRUE),
     sample_data = phyloseq::sample_data(s.data))
-  temp <- ANCOMBC::ancombc(phyloseq = x.phylo, formula = f.form,
+  temp <- ANCOMBC::ancombc(data = x.phylo, formula = f.form,
                   p_adj_method = 'fdr', lib_cut = 100)
   p.val <- rep(1, nrow(data))
   names(p.val) <- rownames(data)
-  p.val[rownames(temp$res$q_val)] <- temp$res$p_val$label
+  p.val[temp$res$p_val$taxon] <- temp$res$p_val$label
   return(p.val)
 }
 
