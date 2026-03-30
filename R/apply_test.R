@@ -331,7 +331,7 @@ check.testing.parameters <- function(sim.location, group, type,
     }
 
     # check if rep_no in the additional arguments
-    if (length(additional.arguments > 0)) {
+    if (length(additional.arguments) > 0) {
       if ('rep_no' %in% names(additional.arguments)){
         if (length(subset) > 1){
           warning("Parameter 'rep_no' will be ignored, since more",
@@ -340,7 +340,7 @@ check.testing.parameters <- function(sim.location, group, type,
         } else {
           for (a in names(idx.all)){
             idx.all[[a]] <- idx.all[[a]][[
-              paste0('rep', additional.arguments$rep.no), , drop=FALSE]]
+              paste0('rep', additional.arguments$rep_no), , drop=FALSE]]
           }
         }
       }
