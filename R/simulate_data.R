@@ -73,7 +73,13 @@ create.data.simulation <- function(feat, meta, sim.location,
 
   # check data
   message("+ Start checking data")
-  res <- check.original.data(feat, meta, sim.type, sim.method)
+  factorize.metadata <- TRUE
+  # Only skip factorizing if explicitly requested to skip it!
+  if (!is.null(sim.params[["factorize.metadata"]]) && (sim.params[["factorize.metadata"]] == FALSE)) {
+     factorize.metadata <- FALSE
+  }
+  message("++ Factorize metadata columns: ", factorize.metadata)
+  res <- check.original.data(feat, meta, sim.type, sim.method, factorize.metadata = factorize.metadata)
   message("+ Finished checking data")
   message("")
   feat.original <- res$feat

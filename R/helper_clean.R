@@ -50,7 +50,7 @@ check.simulation.location <- function(sim.out){
 
 # check input data
 #' @keywords internal
-check.original.data <- function(feat, meta, sim.type, sim.method){
+check.original.data <- function(feat, meta, sim.type, sim.method, factorize.metadata = TRUE){
   
   # check that feat and meta make sense
   # check the class of the features
@@ -108,7 +108,7 @@ check.original.data <- function(feat, meta, sim.type, sim.method){
   }
   
   # validate original data
-  data.list <- validate.original.data(original.data, sim.method)
+  data.list <- validate.original.data(original.data, sim.method, factorize.metadata)
   feat <- data.list$feat
   meta <- data.list$meta
   # remove repeated measurements/individuals with single samples
@@ -172,7 +172,7 @@ check.original.data <- function(feat, meta, sim.type, sim.method){
 
 # validate original data
 #' @keywords internal
-validate.original.data <- function(d.list, sim.method){
+validate.original.data <- function(d.list, sim.method, factorize.metadata = TRUE){
   
   feat.final <- list()
   meta.final <- list()
@@ -278,7 +278,9 @@ validate.original.data <- function(d.list, sim.method){
     meta.final[[j]] <- meta.final[[j]][,colnames.final]
   }
   meta.all <- do.call(rbind, meta.final)
-  meta.all <- clean.meta.data(meta.all)
+  if (factorize.metadata) {
+    meta.all <- clean.meta.data(meta.all)
+  }
   feat.all <- feat.all[,rownames(meta.all)]
   rownames(feat.all) <- paste0('bact_otu_', seq_len(nrow(feat.all)))
   return(list(feat=feat.all, meta=meta.all))
