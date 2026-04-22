@@ -349,7 +349,7 @@ check.testing.parameters <- function(sim.location, group, type,
     all[[g]][['idx']] <- idx.all
 
 
-    if (!is.null(conf) & any(conf=='conf')){
+    if (!is.null(conf)){
       all[[g]][['conf']] <- complete.group$conf_label
     }
     # pass the features/markers/labels nicely
