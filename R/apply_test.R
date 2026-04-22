@@ -187,6 +187,7 @@ check.testing.parameters <- function(sim.location, group, type,
   }
   # TODO test the norm parameter
   implemented.norms <- c('pass', 'TSS', 'TSS.log', 'clr', 'rclr',
+                         'clr_halfmin',
                          'TSS.arcsin','rarefy','rarefy.TSS',
                          'rarefy.TSS.log',
                          'rank')
@@ -402,6 +403,16 @@ norm.data <- function(df, norm, log.n0 = NULL){
       return(log((temp + 1)/gm))
     }, FUN.VALUE = double(nrow(df.clr)))
     return(df.norm.r)
+  } else if (norm=='clr_halfmin'){
+    # replace zero with pseudocount
+    min_val = min(df[df > 0])
+    pseudocount = min_val / 2
+    df.clr <- df
+    df.clr[df.clr == 0] = pseudocount
+
+    # clr via compositions::clr()
+    df.norm <- apply(df.clr, 2, compositions::clr)
+    return(df.norm)
   } else if (norm=='TSS.arcsin'){
     x <- prop.table(df, 2)
     y <- asin(sqrt(x))
