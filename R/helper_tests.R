@@ -681,7 +681,7 @@ test.lm <- function(data, label, conf){
   } else {
     # browser()
     test.package('car')
-    fo <- paste0("feat~label+", paste(colnames(conf), collapse = '+'))
+    fo <- "feat~label+conf"
     p.vals <- vapply(rownames(data), FUN=function(x){
       df <- cbind(data.frame(feat=data[x,], label=label), 
                   conf=conf[colnames(data),])
