@@ -73,14 +73,15 @@ eval.test <- function(sim.location, group, res.mat, adjust='BH', alpha = 0.05) {
     auroc <- roc(predictor = -log10(p.val + 1e-50), response = marker,
                  levels = c(0, 1), direction = '<')
     # p value of alpha as cutoff
+    sig <- p.val < alpha
     # TP
-    TP <- sum(marker[p.val < alpha] == 1)
+    TP <- sum(marker[sig] == 1)
     # TN
-    TN <- sum(marker[p.val > alpha] == 0)
+    TN <- sum(marker[!sig] == 0)
     # Type1
-    FP <- sum(marker[p.val < alpha] == 0)
+    FP <- sum(marker[sig] == 0)
     # Type2
-    FN <- sum(marker[p.val > alpha] == 1)
+    FN <- sum(marker[!sig] == 1)
     # FDR
     FDR <- FP/(FP+TP)
     FDR <- ifelse(is.na(FDR), 0, FDR)
