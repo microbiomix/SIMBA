@@ -810,9 +810,6 @@ test.lm <- function(data, label, conf, covar.mat){
                           if (var(df$feat) == 0){
                             return(list(p.val = 1, eff.size = NA_real_))
                           }
-                          if (x == "ext_mOTU_v3_17336") {
-                            browser()
-                          }
 
                           fit <- lm(data=df, formula = as.formula(fo))
                           res <- broom.mixed::tidy(fit, effects = "fixed")
