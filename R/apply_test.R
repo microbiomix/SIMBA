@@ -257,6 +257,9 @@ check.testing.parameters <- function(sim.location, group, type,
   else if (group %in% all.groups.red) {
     group <- all.groups[grep(group, all.groups)] }
 
+  # read metadata
+  meta <- h5read(sim.location, 'original_data/metadata')
+
   # confounder info
   if (!is.null(conf)){
     if (typeof(conf)!='character'){
@@ -365,8 +368,11 @@ check.testing.parameters <- function(sim.location, group, type,
     all[[g]]$features <- feat.sim
 
     all[[g]]$markers <- complete.group$marker_idx
-    if (!is.null(conf) & any(conf!='conf')){
-      all[["meta"]] <- h5read(sim.location, 'original_data/metadata')
+    if (!is.null(conf) && any(conf!='conf')){
+      all[["meta"]] <- meta
+    }
+    if (!is.null(covariates)){
+      all[["meta"]] <- meta
     }
   }
   return(all)
