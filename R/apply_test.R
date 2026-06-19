@@ -42,15 +42,15 @@
 #' @details todo
 apply.test <- function(sim.location, group, type='default',
                        subset=NA_real_, norm='pass',
-                       test='wilcoxon', conf=NULL, ...){
+                       test='wilcoxon', conf=NULL, covariates=NULL, ...){
 
   additional.arguments <- list(...)
   # check testing parameters
   message("+ Checking testing parameters!")
   all <- check.testing.parameters(sim.location, group, type, subset, norm,
-                                  test, conf, additional.arguments)
+                                  test, conf, covariates, additional.arguments)
 
-  res.all <- list()
+  res.all <- list(p.val = list(), eff.size = list())
   meta.all <- all[["meta"]]
   
   # Bring back the original sample id
@@ -69,25 +69,30 @@ apply.test <- function(sim.location, group, type='default',
     log.n0 <- all[[g]]$log.n0
     conf.l <- all[[g]]$conf
 
+    # Get covariates and align metadata to this group's simulated sample order
+    covar.mat.full <- NULL
+    if (!is.null(meta.all) && !is.null(covariates)) {
+      stopifnot(all(colnames(feat.sim) %in% rownames(meta.all)))
+      covar.mat.full <- meta.all[colnames(feat.sim), covariates, drop = FALSE]
+      stopifnot(all(rownames(covar.mat.full) == colnames(feat.sim)))
+    }
+
     # Build full confounder matrix for this group
-    if (!is.null(meta.all) & !is.null(conf.l)){
+    if (is.null(conf.l)) {
+      conf.mat <- NULL
+    } else if (!is.null(meta.all)){
       conf.mat <- cbind(meta.all, conf.l)
       colnames(conf.mat)[ncol(conf.mat)] <- 'conf'
       conf.mat <- conf.mat[,conf, drop=FALSE]
       rownames(conf.mat) <- colnames(feat.sim)
-    } else if (!is.null(meta.all) & is.null(conf.l)){
-      conf.mat <- meta.all
-      conf.mat <- conf.mat[,conf, drop=FALSE]
-      rownames(conf.mat) <- colnames(feat.sim)
-    } else if (is.null(meta.all) & !is.null(conf.l)){
+    } else if (is.null(meta.all)){
       conf.mat <- data.frame(conf.l)
       colnames(conf.mat) <- 'conf'
       rownames(conf.mat) <- colnames(feat.sim)
-    } else if (is.null(meta.all) & is.null(conf.l)){
-      conf.mat <- NULL
     }
 
-    res.list <- list()
+    p.val.list <- list()
+    eff.size.list <- list()
 
     for (s in names(test.idx)){
       info.mat <- test.idx[[s]]
@@ -98,6 +103,10 @@ apply.test <- function(sim.location, group, type='default',
                           dimnames = list(rownames(feat.sim),
                                           paste0('rep_',
                                                  seq_len(nrow(idx.mat)))))
+      eff.size.mat <- matrix(1, ncol=nrow(idx.mat), nrow=nrow(feat.sim),
+                             dimnames = list(rownames(feat.sim),
+                                             paste0('rep_',
+                                                    seq_len(nrow(idx.mat)))))
       pb <- progress::progress_bar$new(total = nrow(idx.mat))
       for (r in seq_len(nrow(idx.mat))){
 
@@ -112,24 +121,55 @@ apply.test <- function(sim.location, group, type='default',
         # subset/reorder labels to the same sample order used in df.test
         label <- info.mat["label", sel, drop = TRUE]
         names(label) <- colnames(df.test)
+
+        # subset covariates to the current replicate samples
+        covar.mat <- NULL
+        if (!is.null(covar.mat.full)) {
+          covar.mat <- covar.mat.full[sel, , drop = FALSE]
+          stopifnot(identical(rownames(covar.mat), colnames(df.test)))
+        }
+        
         # run test
-        p.val <- run.test(data=df.test,
+        res   <- run.test(data=df.test,
                           label=label,
                           test=test,
+                          covar.mat=covar.mat,
                           conf=conf.mat)
-        # conf=conf.mat[idx.mat[r,],,drop=FALSE])
+
+        # if only p-value is returned, just take it
+        # if it's a list, then there is also eff.size
+        eff.size <- NULL
+        if (typeof(res) != "list") {
+          p.val <- res
+          # conf=conf.mat[idx.mat[r,],,drop=FALSE])
+        } else {
+          p.val <- res[["p.val"]]
+          eff.size <- res[["eff.size"]]
+
+          stopifnot(!is.null(names(eff.size)))
+          if (any(is.na(eff.size))){
+            eff.size[is.na(eff.size)] <- 0
+          }
+          eff.size.mat[names(eff.size),r] <- eff.size
+        }
+
         stopifnot(!is.null(names(p.val)))
         if (any(is.na(p.val))){
           p.val[is.na(p.val)] <- 1
         }
         p.val.mat[names(p.val),r] <- p.val
+
         pb$tick()
       }
-      res.list[[s]] <- p.val.mat
+      p.val.list[[s]] <- p.val.mat
+      if (!is.null(eff.size.mat)) {
+        eff.size.list[[s]] <- eff.size.mat
+      }
       message("++ Finished calculations for ", s)
     }
 
-    res.all[[g]] <- res.list
+    res.all[["p.val"]][[g]] <- p.val.list
+    res.all[["eff.size"]][[g]] <- eff.size.list
     message('+ Finished calculations for group ', g)
   }
   return(res.all)
@@ -137,7 +177,7 @@ apply.test <- function(sim.location, group, type='default',
 
 #' @keywords internal
 check.testing.parameters <- function(sim.location, group, type,
-                                     subset, norm, test, conf,
+                                     subset, norm, test, conf, covariates,
                                      additional.arguments = list()){
 
   # check the H5 file
@@ -268,13 +308,22 @@ check.testing.parameters <- function(sim.location, group, type,
     if (typeof(conf)!='character'){
       stop("Parameter 'confounder' has to be a character!")
     }
-    if (length(conf)==1 & conf=='conf'){
+    if (length(conf)==1 && conf=='conf'){
       TRUE
     } else {
-      meta <- h5read(sim.location, 'original_data/metadata')
       if (!all(conf %in% c('conf', colnames(meta)))){
         stop("All confounders have to be present in the metadata!")
       }
+    }
+  }
+
+  # validate covariates and read metadata once
+  if (!is.null(covariates)) {
+    if (!is.character(covariates)) {
+      stop("Parameter 'covariates' has to be a character vector!")
+    }
+    if (!all(covariates %in% colnames(meta))) {
+      stop("All covariates have to be present in the metadata!")
     }
   }
 

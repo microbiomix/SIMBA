@@ -44,10 +44,26 @@
 #' value for the different test runs.
 #'
 #' @export
-eval.test <- function(sim.location, group, res.mat, adjust='BH', alpha = 0.05) {
+eval.test <- function(sim.location, group, res.mat, eff.mat = NULL, adjust='BH', alpha = 0.05) {
 
   res <- check.eval.parameters(sim.location, group, res.mat, adjust, alpha)
   # browser()
+
+  # optional effect-size checks
+  if (!is.null(eff.mat)) {
+    if (!is.matrix(eff.mat)) {
+      stop("Parameter 'eff.mat' should be a matrix!")
+    }
+    if (is.null(rownames(eff.mat)) || is.null(colnames(eff.mat))) {
+      stop("Parameter 'eff.mat' needs row and column names!")
+    }
+    if (!identical(rownames(eff.mat), rownames(res.mat))) {
+      stop("Row names of 'eff.mat' and 'res.mat' must match exactly!")
+    }
+    if (!identical(colnames(eff.mat), colnames(res.mat))) {
+      stop("Column names of 'eff.mat' and 'res.mat' must match exactly!")
+    }
+  }
 
   # create data.frame to store the evaluation results
   df.res <- data.frame()
@@ -91,10 +107,45 @@ eval.test <- function(sim.location, group, res.mat, adjust='BH', alpha = 0.05) {
     # recall
     R <- TP/(TP+FN)
     R <- ifelse(is.na(R), 0, R)
-    df.res <- rbind(df.res, data.frame(rep=r, auroc=as.double(auroc$auc),
-                                       TP=TP, FP=FP,
-                                       TN=TN, FN=FN, PR=PR,
-                                       R=R, FDR=FDR))
+    out <- data.frame(rep=r, auroc=as.double(auroc$auc),
+                             TP=TP, FP=FP,
+                             TN=TN, FN=FN, PR=PR,
+                             R=R, FDR=FDR)
+
+    # if there is effect size
+    if (!is.null(eff.mat)) {
+      eff <- eff.mat[, x]
+
+      tp_idx <- sig & marker == 1
+      fp_idx <- sig & marker == 0
+      marker_idx <- marker == 1
+
+      abs_eff <- abs(eff)
+
+      out$mean_abs_eff_tp <- if (any(tp_idx, na.rm = TRUE)) {
+        mean(abs_eff[tp_idx], na.rm = TRUE)
+      } else NA_real_
+
+      out$median_abs_eff_tp <- if (any(tp_idx, na.rm = TRUE)) {
+        median(abs_eff[tp_idx], na.rm = TRUE)
+      } else NA_real_
+
+      out$mean_abs_eff_marker <- if (any(marker_idx, na.rm = TRUE)) {
+        mean(abs_eff[marker_idx], na.rm = TRUE)
+      } else NA_real_
+
+      out$median_abs_eff_marker <- if (any(marker_idx, na.rm = TRUE)) {
+        median(abs_eff[marker_idx], na.rm = TRUE)
+      } else NA_real_
+
+      out$mean_abs_eff_fp <- if (any(fp_idx, na.rm = TRUE)) {
+        mean(abs_eff[fp_idx], na.rm = TRUE)
+      } else NA_real_
+
+      out$n_eff_tp <- sum(tp_idx & !is.na(eff))
+    }
+
+    df.res <- rbind(df.res, out)
   }
   return(df.res)
 }

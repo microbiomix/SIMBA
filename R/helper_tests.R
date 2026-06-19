@@ -6,7 +6,7 @@
 ### 2020 GNU GPL 3.0
 
 #' @keywords internal
-run.test <- function(data, label, test, conf){
+run.test <- function(data, label, test, conf, covar.mat=NULL){
 
   if (test == 'wilcoxon'){
     p.val <- test.wilcoxon(data=data, label=label, conf=conf)
@@ -25,10 +25,12 @@ run.test <- function(data, label, test, conf){
   } else if (test == 'metagenomeSeq'){
     if (!is.null(conf)) {
       stop("Test '", test, "' is not a confounder-aware test!") }
-    p.val <- test.MGS(data=data, label=label)
+    p.val <- test.MGS(data=data, label=label, type=1, conf=NULL, covar.mat=covar.mat)
   } else if (test == 'metagenomeSeq2'){
     if (!is.null(conf)) {
       stop("Test '", test, "' is not a confounder-aware test!") }
+    if (!is.null(covar.mat)) {
+      stop("Test '", test, "' is not a covariate-aware test!") }
     p.val <- test.MGS(data=data, label=label, type=2)
   } else if (test == 'mdc-FE'){
     if (is.null(conf)) {
@@ -49,15 +51,15 @@ run.test <- function(data, label, test, conf){
   } else if (test == 'ANCOM_old'){
     p.val <- test.ANCOM(data=data, label=label, conf=conf)
   } else if (test == 'ANCOMBC'){
-    p.val <- test.ANCOMBC(data=data, label=label, conf=conf)
+    p.val <- test.ANCOMBC(data=data, label=label, conf=conf, covar.mat=covar.mat)
   } else if (test == 'ANCOMBC2'){
-    p.val <- test.ANCOMBC2(data=data, label=label, conf=conf)
+    p.val <- test.ANCOMBC2(data=data, label=label, conf=conf, covar.mat=covar.mat)
   } else if (test=='corncob'){
     p.val <- test.corncob(data=data, label=label, conf=conf)
   } else if (test=='limma'){
     p.val <- test.via.limma(data=data, label=label, conf=conf)
   } else if (test=='lm'){
-    p.val <- test.lm(data=data, label=label, conf=conf)
+    p.val <- test.lm(data=data, label=label, conf=conf, covar.mat=covar.mat)
   } else if (test=='lm_inter'){
     p.val <- test.lminter(data=data, label=label, conf=conf)
   } else if (test=='lme'){
@@ -79,7 +81,7 @@ run.test <- function(data, label, test, conf){
   } else if (test=='gFC') {
     p.val <- test.gFC(data=data, label=label, conf=conf)
   } else if (test=='LinDA') {
-    p.val <- test.linda(data=data, label=label, conf=conf)
+    p.val <- test.linda(data=data, label=label, conf=conf, covar.mat=covar.mat)
   } else if (test=='LDM') {
     p.val <- test.LDM(data=data, label=label, conf=conf)
   } else if (test=='fastANCOM') {
@@ -92,19 +94,34 @@ run.test <- function(data, label, test, conf){
 }
 
 #' @keywords internal
-test.linda <- function(data, label, conf){
+test.linda <- function(data, label, conf, covar.mat=NULL){
   # from the github README
   # https://github.com/zhouhj1994/LinDA
   test.package('LinDA')
-  meta <- as.data.frame(label)
-  linda.obj <- LinDA::linda(data, meta, formula = '~label', alpha = 0.1,
+
+  # create data tables
+  f.form <- '~label'
+  s.data <- data.frame(label = factor(label, levels = c(-1, 1)))
+  if (!is.null(covar.mat)) {
+    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), collapse=","), "]. Ignoring confounders.")
+    f.form <- paste0(f.form, '+', paste(colnames(covar.mat), collapse = '+'))
+    s.data <- cbind(s.data, covar.mat)
+  }
+  linda.obj <- LinDA::linda(data, s.data, formula = f.form, alpha = 0.1,
                      p.adj.method='BH',
-                     prev.cut = 0.1, lib.cut = 1000, 
-                     winsor.quan = 0.97)
+                     prev.cut = 0, lib.cut = 0, 
+                     type = "proportion")
+  # p-values
   p.val <- rep(1, nrow(data))
   names(p.val) <- rownames(data)
   p.val[rownames(linda.obj$output$label)] <- linda.obj$output$label$pvalue
-  return(p.val)
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+  eff.size[rownames(linda.obj$output$label)] <- linda.obj$output$label$log2FoldChange
+
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
@@ -170,8 +187,15 @@ test.wilcoxon <- function(data, label, conf){
   stopifnot(ncol(data) == length(label))
   stopifnot(all(colnames(data) %in% names(label)))
   stopifnot(all(sort(unique(label)) == c(-1, 1)))
+
+  # p-values
   p.val = rep(1, nrow(data))
   names(p.val) <- rownames(data)
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+
   if (!is.null(conf)){
     test.package("coin")
     stopifnot(all(names(label) %in% rownames(conf)))
@@ -188,6 +212,7 @@ test.wilcoxon <- function(data, label, conf){
                             conf=as.factor(conf[,1]))
       t <- coin::wilcox_test(feat~l|conf, data=df.temp)
       p.val[f] <- coin::pvalue(t)
+      eff.size[f] <- coin::statistic(t)
     }
     # browser()
   } else {
@@ -195,14 +220,15 @@ test.wilcoxon <- function(data, label, conf){
     # apply Wilcoxon test
     for (f in rownames(data)) {
       t = wilcox.test(as.numeric(data[f,label==-1]),
-                      as.numeric(data[f,label==+1]), exact=FALSE)
+                      as.numeric(data[f,label==+1]), exact=FALSE, conf.int=TRUE)
       p.val[f] = t$p.value
+      eff.size[f] = t$estimate
     }
   }
 
   # Nan p.val can occurr for constant samples
   p.val[!is.finite(p.val)] = 1.0
-  return(p.val)
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
@@ -278,13 +304,22 @@ test.DESeq <- function(data, label){
   diagdds = DESeq2::estimateSizeFactors(diagdds, geoMeans = geoMeans)
   diagdds = DESeq2::DESeq(diagdds, fitType="local")
   res = DESeq2::results(diagdds)
-  p.val <- res$pvalue
-  names(p.val) <- rownames(res)
-  return(p.val)
+
+  # p-values
+  p.val <- rep(1, nrow(data))
+  names(p.val) <- rownames(data)
+  p.val[rownames(res)] <- res$pvalue
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+  eff.size[rownames(res)] <- res$log2FoldChange
+
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
-test.MGS <- function(data, label, type=1, conf=NULL){
+test.MGS <- function(data, label, type=1, conf=NULL, covar.mat=NULL){
   test.package('metagenomeSeq')
 
   stopifnot(ncol(data) == length(label))
@@ -294,39 +329,76 @@ test.MGS <- function(data, label, type=1, conf=NULL){
   # (as recommended by the authors)
   non.sparse.feat = which(rowMeans(data > 0) >= 0.05)
   trim.feat = data[non.sparse.feat, ]
+
+  # Flag sparse samples
   non.sparse.samples = which(colSums(trim.feat) > 10)
-  trim.feat = trim.feat[,non.sparse.samples]
-  label <- label[names(non.sparse.samples)]
+
+  # Handle optional covariate pass-through, but only for fitZig(), not for fitFeatureModel()
+  if (!is.null(covar.mat) && type==1) {
+    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), collapse=","), "]. Ignoring confounders.")
+    f.form = as.formula(paste0('~ label + ', paste(colnames(covar.mat), collapse = ' + ')))
+
+
+    # create data tables
+    s.data = data.frame(label=as.factor(label)) %>%
+                cbind(covar.mat)
+
+    # Remove sparse samples - choose based on row names
+    s.data = s.data[names(non.sparse.samples), ]
+
+    # drop any sample with NA in covariates
+    s.data = s.data %>%
+                tidyr::drop_na()
+
+    # Sync label and otu_data
+
+    label = label[rownames(s.data)]
+    trim.feat = trim.feat[,rownames(s.data)]
+
+    mod = model.frame(formula = f.form, data = s.data)
+    mod = model.matrix(object = f.form, data = mod)
+    stopifnot(all(rownames(mod) == colnames(trim.feat)))
+  } else {
+    # Remove sparse samples
+    trim.feat = trim.feat[,non.sparse.samples]
+    label = label[names(non.sparse.samples)]
+
+    mod = model.matrix(~as.factor(label))
+    rownames(mod) = colnames(trim.feat)
+  }
+
   mgs.obj = metagenomeSeq::newMRexperiment(trim.feat)
   p = tryCatch({metagenomeSeq::cumNormStat(mgs.obj, pFlag=FALSE, 
                                            main="Trimmed data")},
                error=function(err){0.5})
   mgs.obj = metagenomeSeq::cumNorm(mgs.obj, p=p)
 
-  mod = model.matrix(~as.factor(label))
-  rownames(mod) <- colnames(trim.feat)
-  p.val <- tryCatch({
-    if (type==1){
-      settings = metagenomeSeq::zigControl(maxit=20, verbose=TRUE)
-      fit = metagenomeSeq::fitZig(mgs.obj, mod=mod, control=settings)
-    } else if (type==2){
-      fit = metagenomeSeq::fitFeatureModel(obj=mgs.obj, mod=mod)
-    } else {
-      stop("Unsupported type!")
-    }
+  if (type==1){
+    settings = metagenomeSeq::zigControl(maxit=20, verbose=TRUE)
+    fit = metagenomeSeq::fitZig(mgs.obj, mod=mod, control=settings)
+  } else if (type==2){
+    fit = metagenomeSeq::fitFeatureModel(obj=mgs.obj, mod=mod)
+  } else {
+    stop("Unsupported type!")
+  }
 
-    res <- metagenomeSeq::MRcoefs(fit, number = Inf)
-    p.val = rep(1, nrow(data))
-    names(p.val) = rownames(data)
-    p.val[row.names(res)] = res$pvalues
-    p.val},
-    error=function(err){
-      p.val <- rep(1, nrow(data))
-      names(p.val) <- rownames(data)
-      p.val
-    })
+  res <- metagenomeSeq::MRcoefs(fit, number = Inf)
 
-  return(p.val)
+  # p-values
+  p.val = rep(1, nrow(data))
+  names(p.val) = rownames(data)
+  p.val[row.names(res)] = res$pvalues
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+  if (type == 1) {
+    eff.size[row.names(res)] = res$label1
+  } else {
+    eff.size[row.names(res)] = res$logFC
+  }
+
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
@@ -355,10 +427,18 @@ test.edgeR <- function(data, label){
   et = edgeR::exactTest(y)
   res = edgeR::topTags(et, n=length(nonzero.idx), sort.by='none')
   stopifnot(all(names(nonzero.idx) == rownames(res$table)))
+
+  # p-values
   p.val = rep(1.0, nrow(data))
   names(p.val) <- rownames(data)
   p.val[nonzero.idx] = res$table[,'PValue']
-  return(p.val)
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+  eff.size[nonzero.idx] = res$table[,'logFC']
+
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
@@ -496,54 +576,85 @@ test.ANCOM.2 <- function(data, label, conf){
 }
 
 #' @keywords internal
-test.ANCOMBC <- function(data, label, conf){
+test.ANCOMBC <- function(data, label, conf=NULL, covar.mat=NULL){
   
   test.package('ANCOMBC')
   test.package("phyloseq")
+
+  stopifnot(ncol(data) == length(label))
+  stopifnot(all(colnames(data) %in% names(label)))
+
   # deal with nonunique samples from biased idx generation
   names(label) <- paste0(names(label), '_', seq_along(label))
   colnames(data) <- paste0(colnames(data), '_', seq_along(label))
+
+  # recode -1/+1 to 0/1 as in existing implementation
   label <- label + 1
   label <- label/2
-  if (is.null(conf)){
-    s.data <- data.frame(label=label, dummy=2)
-    f.form <- 'label'
-  } else {
-    s.data <- cbind(data.frame(label=label, dummy=2), conf)
-    f.form <- paste0('label+', paste(colnames(conf), collapse = '+'))
+
+  # create data tables
+  f.form <- 'label'
+  s.data <- data.frame(label=label)
+  if (!is.null(covar.mat)) {
+    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), sep=","), "]. Ignoring confounders.")
+    f.form <- paste0(f.form, '+', paste(colnames(covar.mat), collapse = '+'))
+    s.data <- cbind(s.data, covar.mat)
+  } else if (!is.null(conf)) {
+    f.form <- paste0(f.form, '+', paste(colnames(conf), collapse = '+'))
+    s.data <- cbind(s.data, conf)
   }
   x.phylo <- phyloseq::phyloseq(
     otu_table = phyloseq::otu_table(data, taxa_are_rows = TRUE),
     sample_data = phyloseq::sample_data(s.data))
   temp <- ANCOMBC::ancombc(data = x.phylo, formula = f.form,
                   p_adj_method = 'fdr', lib_cut = 100)
+
+  # p-values
   p.val <- rep(1, nrow(data))
   names(p.val) <- rownames(data)
   p.val[temp$res$p_val$taxon] <- temp$res$p_val$label
-  return(p.val)
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+  eff.size[temp$res$lfc$taxon] <- temp$res$lfc$label
+
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
-test.ANCOMBC2 <- function(data, label, conf){
-  #devtools::load_all("/projects/arumugam/people/mjq180/git/ANCOMBC")
+test.ANCOMBC2 <- function(data, label, conf, covar.mat){
   test.package('ANCOMBC')
   test.package("phyloseq")
+
+  stopifnot(ncol(data) == length(label))
+  stopifnot(all(colnames(data) %in% names(label)))
+
   # deal with nonunique samples from biased idx generation
   names(label) <- paste0(names(label), '_', seq_along(label))
   colnames(data) <- paste0(colnames(data), '_', seq_along(label))
+
+  # recode -1/+1 to 0/1 as in existing implementation
   label <- label + 1
   label <- label/2
-  if (is.null(conf)){
-    s.data <- data.frame(label=label, dummy=2)
-    f.form <- 'label'
-  } else {
-    s.data <- cbind(data.frame(label=label, dummy=2), conf)
-    f.form <- paste0('label+', paste(colnames(conf), collapse = '+'))
+
+  # create data tables
+  f.form <- 'label'
+  s.data <- data.frame(label=label)
+  if (!is.null(covar.mat)) {
+    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), sep=","), "]. Ignoring confounders.")
+    f.form <- paste0(f.form, '+', paste(colnames(covar.mat), collapse = '+'))
+    s.data <- cbind(s.data, covar.mat)
+  } else if (!is.null(conf)) {
+    f.form <- paste0(f.form, '+', paste(colnames(conf), collapse = '+'))
+    s.data <- cbind(s.data, conf)
   }
+
+  message("++ Using formula: ", f.form)
   x.phylo <- phyloseq::phyloseq(
     otu_table = phyloseq::otu_table(data, taxa_are_rows = TRUE),
     sample_data = phyloseq::sample_data(s.data))
-  temp <- ancombc2(data = x.phylo,
+  temp <- ANCOMBC::ancombc2(data = x.phylo,
                             fix_formula = f.form,
                             rand_formula = NULL,
                             p_adj_method = "fdr",
@@ -554,10 +665,22 @@ test.ANCOMBC2 <- function(data, label, conf){
                             neg_lb = TRUE,
                             alpha = 0.05
                             )
+  # If taxa failed sensitivity analysis, then replace with p.val = 1
+  res <- temp$res %>%
+           dplyr::select(taxon, p_label, passed_ss_label, lfc_label) %>%
+           dplyr::mutate(p_label = replace(p_label, passed_ss_label != TRUE, 1))
+
+  # p-values
   p.val <- rep(1, nrow(data))
   names(p.val) <- rownames(data)
-  p.val[temp$res$taxon] <- temp$res$p_label
-  return(p.val)
+  p.val[res$taxon] <- res$p_label
+
+  # effect sizes
+  eff.size <- rep(NA_real_, nrow(data))
+  names(eff.size) <- rownames(data)
+  eff.size[res$taxo] <- res$lfc_label
+
+  return(list(p.val=p.val, eff.size=eff.size))
 }
 
 #' @keywords internal
@@ -671,14 +794,39 @@ test.via.limma <- function(data, label, conf){
 }
 
 #' @keywords internal
-test.lm <- function(data, label, conf){
-  if (is.null(conf)){
-    p.vals <- vapply(rownames(data), FUN=function(x){
-      fit <- lm(as.numeric(data[x,])~label)
-      res <- anova(fit)
-      return(res$`Pr(>F)`[1])
-    }, FUN.VALUE = double(1))
-  } else {
+test.lm <- function(data, label, conf, covar.mat){
+  if (!is.null(covar.mat)){
+    # browser()
+    covar_names <- colnames(covar.mat)
+    message("++ Received covariate pass-through for ", covar_names, ". Ignoring confounders.")
+    test.package('car')
+    fo <- paste0("feat~label+", paste(covar_names, collapse = '+'))
+    message("++ Using formula: ", fo)
+    tmp <- lapply(rownames(data),
+                     FUN=function(x) {
+                          df <- cbind(data.frame(feat=data[x,], label=label),
+                                      covar.mat[colnames(data),])
+                          colnames(df)[3:ncol(df)] <- colnames(covar.mat)
+                          if (var(df$feat) == 0){
+                            return(list(p.val = 1, eff.size = NA_real_))
+                          }
+                          if (x == "ext_mOTU_v3_17336") {
+                            browser()
+                          }
+
+                          fit <- lm(data=df, formula = as.formula(fo))
+                          res <- broom.mixed::tidy(fit, effects = "fixed")
+                          res <- res[res$term=='label',]
+                          return(list(p.val = res$p.value, eff.size = res$estimate))
+                     })
+    out <- list(
+      p.val    = vapply(tmp, FUN=`[[`, FUN.VALUE=numeric(1), "p.val"),
+      eff.size = vapply(tmp, FUN=`[[`, FUN.VALUE=numeric(1), "eff.size")
+    )
+    names(out$p.val) <- rownames(data)
+    names(out$eff.size) <- rownames(data)
+    return(out)
+  } else if (!is.null(conf)) {
     # browser()
     test.package('car')
     fo <- "feat~label+conf"
@@ -700,8 +848,15 @@ test.lm <- function(data, label, conf){
         return(res$`Pr(>F)`[2])
       }
     }, FUN.VALUE = double(1))
+    return(p.vals)
+  } else {
+    p.vals <- vapply(rownames(data), FUN=function(x){
+      fit <- lm(as.numeric(data[x,])~label)
+      res <- anova(fit)
+      return(res$`Pr(>F)`[1])
+    }, FUN.VALUE = double(1))
+    return(p.vals)
   }
-  return(p.vals)
 }
 
 #' @keywords internal
