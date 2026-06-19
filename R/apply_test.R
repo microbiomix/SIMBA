@@ -118,8 +118,8 @@ apply.test <- function(sim.location, group, type='default',
         # normalize  after subsetting
         df.test <- norm.data(df.test, norm, log.n0)
         
-        # subset/reorder labels to the same sample order used in df.test
-        label <- info.mat["label", sel, drop = TRUE]
+        # get labels - should be the same sample order used in df.test
+        label <- info.mat["label", , drop = TRUE]
         names(label) <- colnames(df.test)
 
         # subset covariates to the current replicate samples
