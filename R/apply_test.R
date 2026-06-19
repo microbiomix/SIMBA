@@ -91,7 +91,7 @@ apply.test <- function(sim.location, group, type='default',
 
     for (s in names(test.idx)){
       info.mat <- test.idx[[s]]
-      label <- info.mat['label',]
+      #label <- info.mat['label',]
       idx.mat <- info.mat[which(grepl('^rep[0-9]*$', rownames(info.mat))),,
                           drop=FALSE]
       p.val.mat <- matrix(1, ncol=nrow(idx.mat), nrow=nrow(feat.sim),
@@ -101,11 +101,13 @@ apply.test <- function(sim.location, group, type='default',
       pb <- progress::progress_bar$new(total = nrow(idx.mat))
       for (r in seq_len(nrow(idx.mat))){
 
-        df.test <- feat.sim[,idx.mat[r,]]
+        sel <- idx.mat[r, ]
 
-        # normalize
+        # subset features to the selected samples
+        df.test <- feat.sim[, sel, drop = FALSE]
+
+        # normalize  after subsetting
         df.test <- norm.data(df.test, norm, log.n0)
-        # browser()
         names(label) <- colnames(df.test)
         # run test
         p.val <- run.test(data=df.test,
