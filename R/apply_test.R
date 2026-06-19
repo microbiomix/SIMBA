@@ -52,6 +52,10 @@ apply.test <- function(sim.location, group, type='default',
 
   res.all <- list()
   meta.all <- all[["meta"]]
+  
+  # Bring back the original sample id
+  rownames(meta.all) <- meta.all[, "__sample_id"]
+  meta.all["__sample_id"] <- NULL
 
   for (g in names(all)){
 

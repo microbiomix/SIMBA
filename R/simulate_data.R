@@ -84,6 +84,13 @@ create.data.simulation <- function(feat, meta, sim.location,
   message("")
   feat.original <- res$feat
   meta.original <- res$meta
+  
+  # Preserve original sample id from metadata rowname
+  meta.original <- cbind(
+    "__sample_id" = rownames(meta.original),
+    meta.original,
+    stringsAsFactors = FALSE
+  )
 
   # check sim.location
   message("+ Start checking the simulation location")

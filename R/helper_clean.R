@@ -238,8 +238,26 @@ validate.original.data <- function(d.list, sim.method, factorize.metadata = TRUE
     colnames.meta[[i]] <- colnames(meta.temp)
     feat.names[[i]] <- rownames(feat.temp)
     
-    rownames(meta.temp) <- paste0("Sample_", i, "_", seq_len(nrow(meta.temp)))
-    colnames(feat.temp) <- paste0("Sample_", i, "_", seq_len(nrow(meta.temp)))
+    # Preserve original sample names when they are available and unique.
+    # Fall back to synthetic names only if needed, e.g. to avoid collisions
+    # across multiple input datasets.
+    orig_sample_names <- all.samples
+    
+    if (is.null(orig_sample_names) ||
+        anyNA(orig_sample_names) ||
+        any(orig_sample_names == "") ||
+        anyDuplicated(orig_sample_names)) {
+      warning(
+        "Sample names are missing or duplicated after matching feat and meta; ",
+        "falling back to synthetic Sample_* labels."
+      )
+      new_sample_names <- paste0("Sample_", i, "_", seq_len(nrow(meta.temp)))
+    } else {
+      new_sample_names <- orig_sample_names
+    }
+    
+    rownames(meta.temp) <- new_sample_names
+    colnames(feat.temp) <- new_sample_names
     
     # adjust the list
     feat.final[[i]] <- feat.temp
@@ -282,7 +300,22 @@ validate.original.data <- function(d.list, sim.method, factorize.metadata = TRUE
     meta.all <- clean.meta.data(meta.all)
   }
   feat.all <- feat.all[,rownames(meta.all)]
-  rownames(feat.all) <- paste0('bact_otu_', seq_len(nrow(feat.all)))
+  # Preserve original feature names when they are available and unique.
+  # Fall back to synthetic names only if needed.
+  orig_feat_names <- rownames(feat.all)
+  
+  if (is.null(orig_feat_names) ||
+      anyNA(orig_feat_names) ||
+      any(orig_feat_names == "") ||
+      anyDuplicated(orig_feat_names)) {
+    warning(
+      "Feature names are missing or duplicated after combining datasets; ",
+      "falling back to synthetic bact_otu_* labels."
+    )
+    rownames(feat.all) <- paste0("bact_otu_", seq_len(nrow(feat.all)))
+  } else {
+    rownames(feat.all) <- orig_feat_names
+  }
   return(list(feat=feat.all, meta=meta.all))
 }
 
