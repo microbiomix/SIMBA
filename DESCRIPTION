@@ -1,10 +1,13 @@
 Package: simbaR
 Type: Package
 Title: Simulation of Microbiome Data with Biological Accuracy
-Version: 0.5.6
+Version: 0.6
 Authors@R: c(person("Jakob", "Wirbel", role = c("aut", "cre"),
                 email = "jakob.wirbel@gmail.com",
                 comment = c(ORCID = "0000-0002-4073-3562")),
+             person("Mani", "Arumugam", role = c("aut"),
+                email = "arumugam@sund.ku.dk",
+                comment = c(ORCID = "0000-0002-0886-9101")),
              person("Morgan", "Essex",
                 email = "essexmorgan@gmail.com", role = c("aut")),
              person("Sofia", "Forslund",
@@ -26,6 +29,8 @@ Imports:
     phyloseq,
     nlme,
     ggplot2,
+    compositions,
+    broom.mixed,
     tmvtnorm
 Suggests:
     knitr,
@@ -70,4 +75,4 @@ VignetteBuilder: knitr
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.3
