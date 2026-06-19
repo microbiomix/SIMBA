@@ -117,38 +117,37 @@ simulate.resampling <- function(feat, meta, sim.out, sim.params){
     stopifnot(!is.null(label.col))
     stopifnot(label.col %in% colnames(meta))
 
-    raw.label <- meta[, label.col]
+    # Build fixed labels directly from metadata, aligned to the feature matrix
+    raw.label <- meta[[label.col]]
     names(raw.label) <- rownames(meta)
 
-    keep <- !is.na(raw.label)
-    raw.label <- raw.label[keep]
+    # Reorder metadata labels to the feature-table column order
+    raw.label <- raw.label[colnames(feat)]
 
-    if (!is.null(prob)){
-      common.samples <- intersect(names(prob), names(raw.label))
-      raw.label <- raw.label[common.samples]
-      prob <- prob[common.samples]
-      if (!is.null(conf) && exists("conf.label")){
-        conf.label <- conf.label[common.samples]
+    # Fallback if case/control values were not supplied explicitly
+    if (is.null(case.value) || is.null(control.value)) {
+      u <- unique(raw.label[!is.na(raw.label)])
+      if (length(u) != 2) {
+        stop("fixed.labels=TRUE requires exactly two non-missing label values when case/control values are not supplied.")
       }
-    }
-
-    ## recode to -1 / +1
-    if (!is.null(case.value) && !is.null(control.value)){
-      label.fixed <- ifelse(raw.label == case.value, 1,
-                            ifelse(raw.label == control.value, -1, NA))
-    } else {
-      u <- unique(raw.label)
-      u <- u[!is.na(u)]
-      stopifnot(length(u) == 2)
-      label.fixed <- ifelse(raw.label == u[1], -1, 1)
+      case.value <- u[1]
+      control.value <- u[2]
       warning("fixed.labels=TRUE but case/control values not supplied; ",
               "mapped first observed label to -1 and second to +1.")
     }
 
-    keep2 <- !is.na(label.fixed)
-    label.fixed <- label.fixed[keep2]
-    names(label.fixed) <- names(raw.label)[keep2]
+    # Keep only samples with valid case/control labels
+    keep2 <- !is.na(raw.label) & raw.label %in% c(case.value, control.value)
+    
+    label.fixed <- ifelse(
+      raw.label[keep2] == case.value, 1,
+      ifelse(raw.label[keep2] == control.value, -1, NA)
+    )
+    
+    # Preserve sample names after filtering
+    names(label.fixed) <- colnames(feat)[keep2]
 
+    
     stopifnot(all(label.fixed %in% c(-1, 1)))
     num.sample <- length(label.fixed)
 
@@ -200,17 +199,24 @@ simulate.resampling <- function(feat, meta, sim.out, sim.params){
         }
 
         # generate label
-        if (isTRUE(sim.params$fixed.labels)) {
-          label <- meta[[sim.params$label.col]]
-          names(label) <- rownames(meta)
-
-          # recode to -1 / +1
-          label <- ifelse(label == sim.params$case.value, 1, -1)
-
-          # keep only samples with non-missing labels
-          keep <- !is.na(label)
-          label <- label[keep]
+        if (fixed.labels) {
+          # Reuse the validated fixed label vector prepared above.
+          # This preserves the original sample-name mapping and excludes invalid labels.
+          label <- label.fixed
+          
+          # Keep the feature matrix in exactly the same sample order as the labels.
           feat.tmp <- feat[, names(label), drop = FALSE]
+          
+          # Keep other sample-level vectors aligned if they exist.
+          if (!is.null(prob)) {
+            prob <- prob[names(label)]
+          }
+          
+          # Keep confounder labels aligned if they exist
+          if (!is.null(conf) && exists("conf.label")) {
+            conf.label <- conf.label[names(label)]
+          }
+          
           num.sample <- length(label)
         } else {
           label <- rep(-1, num.sample)
@@ -274,7 +280,13 @@ simulate.resampling <- function(feat, meta, sim.out, sim.params){
         # save data in H5-file
         h5.subdir <- paste0('ab', a, '_prev', b, '_rep', r)
         stopifnot(h5createGroup(sim.out, h5.subdir))
+        
+        # Sanity check for labels
+        stopifnot(!is.null(names(label)))
+        stopifnot(isTRUE(all.equal(names(label), colnames(sim.feat))))
+        stopifnot(all(label %in% c(-1, 1)))
         h5write(label, sim.out, paste0(h5.subdir, '/labels'))
+        
         h5write(sim.feat, sim.out, paste0(h5.subdir, '/features'))
         h5write(marker.idx, sim.out, paste0(h5.subdir, '/marker_idx'))
         if (!is.null(conf.marker.idx)){

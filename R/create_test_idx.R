@@ -25,7 +25,7 @@
 #' @keywords SIMBA create.test.idx
 #'
 #' @return Returns nothing, but modifies the simulation file
-create.test.idx <- function(sim.location, subsets, repetitions){
+create.test.idx <- function(sim.location, subsets, repetitions, fixed.labels = FALSE){
 
   message("+ Starting to check parameters for test idx creation")
   # check parameters
@@ -77,7 +77,7 @@ create.test.idx <- function(sim.location, subsets, repetitions){
   message("+ Start test idx creation")
   if (params$general_params$sim.method == 'pass') {
     temp <- save.idx(NULL, NULL, subsets, repetitions,
-                     class.balance, sim.location)
+                     class.balance, sim.location, fixed.labels=fixed.labels)
   } else {
     ## loop through subset sizes and repetitions and simulation repetitions
     if ('prev.scale' %in% names(sim.params)){
@@ -88,7 +88,7 @@ create.test.idx <- function(sim.location, subsets, repetitions){
         for (r in seq_len(sim.params$repeats)){
           for (p in seq_along(sim.params$prev.scale)){
             temp <- save.idx(ab, r, subsets, repetitions, class.balance,
-                             sim.location, prev=p)
+                             sim.location, prev=p, fixed.labels=fixed.labels)
             pb$tick()
           }
         }
@@ -99,7 +99,7 @@ create.test.idx <- function(sim.location, subsets, repetitions){
       for (ab in seq_along(sim.params$ab.scale)){
         for (r in seq_len(sim.params$repeats)){
           temp <- save.idx(ab, r, subsets, repetitions,
-                           class.balance, sim.location)
+                           class.balance, sim.location, fixed.labels=fixed.labels)
           pb$tick()
         }
       }
@@ -114,7 +114,7 @@ create.test.idx <- function(sim.location, subsets, repetitions){
 
 #' @keywords internal
 save.idx <- function(ab, rep, subs, reps, class.balance, sim.file,
-                     prev=NULL, ...){
+                     prev=NULL, fixed.labels=FALSE, ...){
   additional.arguments <- list(...)
   # load the original or specific instance of simulated data
   if ('group' %in% names(additional.arguments)) {
@@ -142,12 +142,23 @@ save.idx <- function(ab, rep, subs, reps, class.balance, sim.file,
                               replace = TRUE)) }
       else {
         sub.label <- c(sample(pos.samples, s-ceiling(s*class.balance)),
-                       sample(neg.samples, ceiling(s*class.balance))) }
+                       sample(neg.samples, ceiling(s*class.balance))) 
+      }
       stopifnot(length(sub.label) >= s)
       sub.label <- sub.label[seq(s)]
       mat[r,] <- sub.label
     }
-    fix.label <- c(rep(-1, s*(1-class.balance)), rep(1, s*class.balance))
+    if (isTRUE(fixed.labels)) {
+      # Use the true labels of the sampled columns, in the sampled order.
+      # Because each repetition may sample a different column order, use the
+      # labels from the final sampled index set only if all repetitions share
+      # the same class-ordering assumption. This preserves existing behavior
+      # while fixing label-to-sample alignment under fixed.labels mode.
+      fix.label <- sim.label[sub.label]
+    } else {
+      # Original SIMBA behavior
+      fix.label <- c(rep(-1, s * (1 - class.balance)), rep(1, s * class.balance))
+    }
     mat <- rbind(fix.label, mat)
     rownames(mat) <- c('label', paste0('rep', seq_len(reps)))
     idx.list[[paste0('subset_', s)]] <- mat
