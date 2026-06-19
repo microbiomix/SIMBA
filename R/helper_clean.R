@@ -561,14 +561,10 @@ check.simulation.parameters <- function(sim.method,
     cleaned.params[[x]] <- sim.params[[x]]
   }
   if (sim.method=='resampling'){
-    if ('conf' %in% names(sim.params)){
-      cleaned.params[['conf']] <- sim.params[['conf']]
-    }
-    if ('conf.params' %in% names(sim.params)){
-      cleaned.params[['conf.params']] <- sim.params[['conf.params']]
-    }
-    if ('balanced' %in% names(sim.params)){
-      cleaned.params[['balanced']] <- sim.params[['balanced']]
+    for (x in c('conf', 'conf.params', 'balanced', 'factorize.metadata', 'fixed.labels', 'label.col', 'case.value', 'control.value')) {
+      if (x %in% names(sim.params)){
+        cleaned.params[[x]] <- sim.params[[x]]
+      }
     }
   }
   
