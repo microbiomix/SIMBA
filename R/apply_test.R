@@ -423,8 +423,10 @@ norm.data <- function(df, norm, log.n0 = NULL){
     df.clr[df.clr == 0] = pseudocount
 
     # clr via compositions::clr()
-    df.norm <- apply(df.clr, 2, compositions::clr)
-    return(df.norm)
+    df.norm <- apply(df.clr, 1, compositions::clr)
+    
+    # return transposed df.norm, since it has now swapped row/column
+    return(t(df.norm))
   } else if (norm=='TSS.arcsin'){
     x <- prop.table(df, 2)
     y <- asin(sqrt(x))
