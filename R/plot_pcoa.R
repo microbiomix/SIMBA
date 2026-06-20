@@ -66,42 +66,65 @@ pcoa.plot <- function(sim.location, group, distance){
       conf <- TRUE
     }
   }
+  
+  # Recover original sample IDs if available
+  if ("__sample_id" %in% colnames(meta)) {
+    rownames(meta) <- meta[["__sample_id"]]
+  }
+  
+  # Try to split original samples by the same case/control coding used in the simulation
+  orig.group <- rep("original", ncol(feat.filt))
+  
+  if (isTRUE(sim.params$sim_params$fixed.labels)) {
+    lab.col <- sim.params$sim_params$label.col
+    case.value <- sim.params$sim_params$case.value
+    control.value <- sim.params$sim_params$control.value
+    
+    if (!is.null(lab.col) && lab.col %in% colnames(meta)) {
+      raw.label <- as.character(meta[colnames(feat.filt), lab.col])
+      case.value <- as.character(case.value)
+      control.value <- as.character(control.value)
+      
+      orig.group <- ifelse(
+        raw.label == case.value, "original-case",
+        ifelse(raw.label == control.value, "original-control", "original")
+      )
+    }
+  }
+  
   if (conf){
     # TODO
     if (sim.params$sim_params$conf=='batch'){
-      df.meta <- data.frame(group='original',
+      df.meta <- data.frame(group=orig.group,
                             confounder=meta$Study,
                             names=paste0('original_',
                                          seq_len(ncol(feat.filt))))
       df.meta <- rbind(
         df.meta,
-        data.frame(group=paste0('simulated-group',
-                                ifelse(label==1, 1, 2)),
+        data.frame(group = ifelse(label == 1, "simulated-case", "simulated-control"),
                    confounder=paste0('Study_',
                                      h5read(file=sim.location,
                                             name=paste0('/',group,
                                                         '/conf_label'))),
-                   names=paste0('simulated_', seq_len(ncol(feat.filt)))))
+                   names=paste0('simulated_', seq_len(ncol(feat.sim)))))
     } else {
-      df.meta <- data.frame(group='original',
+      df.meta <- data.frame(group=orig.group,
                             confounder=0,
                             names=paste0('original_',
                                          seq_len(ncol(feat.filt))))
       df.meta <- rbind(df.meta,
-                       data.frame(group=paste0('simulated-group',
-                                               ifelse(label==1, 1, 2)),
+                       data.frame(group = ifelse(label == 1, "simulated-case", "simulated-control"),
                                   confounder=h5read(file=sim.location,
                                                     name=paste0('/',group,
                                                                 '/conf_label')),
                                   names=paste0('simulated_',
-                                               seq_len(ncol(feat.filt)))))
+                                               seq_len(ncol(feat.sim)))))
     }
   } else {
-    df.meta <- data.frame(group='original',
+    df.meta <- data.frame(group=orig.group,
                           names=paste0('original_', seq_len(ncol(feat.filt))))
     df.meta <- rbind(df.meta,
-                     data.frame(group=paste0('simulated-group',
-                                             ifelse(label==1, 1, 2)),
+                     data.frame(group = ifelse(label == 1, "simulated-case", "simulated-control"),
                                 names=paste0('simulated_',
                                              seq_len(ncol(feat.sim)))))
   }
@@ -145,8 +168,15 @@ pcoa.plot <- function(sim.location, group, distance){
                                     col=df.plot$group)) +
     ggplot2::theme_classic() +
     ggplot2::scale_colour_manual(
-      values = c('#307FE275', '#FFA30075', '#E4004675'),
-      name='') +
+      values = c(
+        "original-case" = "#9EC5FEAA",
+        "original-control" = "#F4A3A8AA",
+        "simulated-case" = "#2F6FDBAA",
+        "simulated-control" = "#D84B6BAA",
+        "original" = "#999999AA"
+      ),
+      name = ""
+    ) +
     ggplot2::xlab(paste0('PCo 1 [', axis.labels[1], '%]')) +
     ggplot2::ylab(paste0('PCo 2 [', axis.labels[2], '%]'))
   if ('confounder' %in% colnames(df.meta)){
