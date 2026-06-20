@@ -153,7 +153,7 @@ pcoa.plot <- function(sim.location, group, distance){
     bc <- as.matrix(vegdist(t(tmp), method='euclidean'))
   }
   # calculate pcoa
-  pco.res <- pco(bc)
+  pco.res <- labdsv::pco(bc)
   df.plot <- as.data.frame(pco.res$points)
   # join with metadata
   df.plot <- cbind(df.plot, df.meta[match(rownames(df.plot), df.meta$names),])
