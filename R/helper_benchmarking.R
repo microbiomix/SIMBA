@@ -133,15 +133,6 @@ extract_apply_test_long <- function(apply_res,
   # Prevalence over the full simulated group.
   prevalence_full <- rowMeans(feat.sim > 0)
   
-  # Median nonzero abundance over the full simulated group.
-  nonzero_median_full <- apply(feat.sim, 1, function(x) {
-    x <- x[x > 0]
-    if (length(x) == 0) return(NA_real_)
-    stats::median(x, na.rm = TRUE)
-  })
-  
-  log10_nonzero_median_full <- log10(nonzero_median_full)
-  
   # Pull replicate sample selections if available.
   # These are only needed when replicate-specific prevalence should be computed.
   idx_info <- NULL
