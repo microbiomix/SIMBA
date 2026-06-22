@@ -207,22 +207,41 @@ test.wilcoxon <- function(data, label, conf){
     # apply blocked Wilcoxon test
 
     for (f in rownames(data)){
+      x <- as.numeric(data[f, label == -1])
+      y <- as.numeric(data[f, label == +1])
+      
       df.temp <- data.frame(feat=as.numeric(data[f,]),
                             l=as.factor(label),
                             conf=as.factor(conf[,1]))
       t <- coin::wilcox_test(feat~l|conf, data=df.temp)
       p.val[f] <- coin::pvalue(t)
-      eff.size[f] <- coin::statistic(t)
+      # proxy effect size: rank-biserial style dominance measure
+      # computed from the observed two-group values
+      if (all(is.na(c(x, y))) || length(unique(c(x, y))) <= 1) {
+        eff.size[f] <- 0
+      } else {
+        wins <- outer(y, x, FUN = function(a, b) sign(a - b))
+        eff.size[f] <- mean(wins, na.rm = TRUE)
+      }
     }
     # browser()
   } else {
     data <- data[,names(label)]
     # apply Wilcoxon test
     for (f in rownames(data)) {
-      t = wilcox.test(as.numeric(data[f,label==-1]),
-                      as.numeric(data[f,label==+1]), exact=FALSE, conf.int=TRUE)
+      x <- as.numeric(data[f,label==-1])
+      y <- as.numeric(data[f,label==+1])
+      
+      t = wilcox.test(x, y, exact=FALSE, conf.int=TRUE)
       p.val[f] = t$p.value
-      eff.size[f] = t$estimate
+      
+      # proxy effect size: rank-biserial style dominance measure
+      if (all(is.na(c(x, y))) || length(unique(c(x, y))) <= 1) {
+        eff.size[f] = 0
+      } else {
+        wins <- outer(y, x, FUN = function(a, b) sign(a - b))
+        eff.size[f] = mean(wins, na.rm = TRUE)
+      }
     }
   }
 
