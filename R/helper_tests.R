@@ -678,7 +678,7 @@ test.ANCOMBC2 <- function(data, label, conf, covar.mat){
   # effect sizes
   eff.size <- rep(NA_real_, nrow(data))
   names(eff.size) <- rownames(data)
-  eff.size[res$taxo] <- res$lfc_label
+  eff.size[res$taxon] <- res$lfc_label
 
   return(list(p.val=p.val, eff.size=eff.size))
 }
