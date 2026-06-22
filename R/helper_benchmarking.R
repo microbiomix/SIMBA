@@ -79,9 +79,6 @@ parse_group_info <- function(group_name, ab.scale) {
 #'   \code{apply.test()}.
 #' @param adjust Character scalar giving the p-value adjustment method passed to
 #'   \code{p.adjust()}. Use \code{"pass"} or \code{"PASS"} to skip adjustment.
-#' @param compute_rep_prevalence Logical; if \code{TRUE}, compute prevalence
-#'   within each replicate-specific subset when the corresponding indices are
-#'   available in the HDF5 structure.
 #'
 #' @return A tibble with one row per taxon per replicate column, containing:
 #'   p-values, adjusted p-values, effect sizes, marker status, prevalence
@@ -174,21 +171,6 @@ extract_apply_test_long <- function(apply_res,
     detected <- padj < alpha
     is_marker <- rownames(pval_mat) %in% marker_idx
     
-    # Placeholder for replicate-specific prevalence if requested.
-    prevalence_rep <- rep(NA_real_, length(p))
-    names(prevalence_rep) <- rownames(pval_mat)
-    
-    if (compute_rep_prevalence && !is.null(idx_info)) {
-      rep_num <- as.integer(stringr::str_extract(rep_col, "[0-9]+"))
-      idx_row <- paste0("rep", rep_num)
-      
-      if (idx_row %in% rownames(idx_info)) {
-        sel <- idx_info[idx_row, ]
-        feat.rep <- feat.sim[, sel, drop = FALSE]
-        prevalence_rep <- rowMeans(feat.rep > 0)
-      }
-    }
-    
     tibble::tibble(
       group = group,
       rep = rep_col,
@@ -199,9 +181,6 @@ extract_apply_test_long <- function(apply_res,
       effect_size = as.numeric(eff),
       abs_effect_size = abs(as.numeric(eff)),
       prevalence_full = as.numeric(prevalence_full[rownames(pval_mat)]),
-      prevalence_rep = as.numeric(prevalence_rep[rownames(pval_mat)]),
-      abundance_nonzero_median_full = as.numeric(nonzero_median_full[rownames(pval_mat)]),
-      log10_abundance_nonzero_median_full = as.numeric(log10_nonzero_median_full[rownames(pval_mat)]),
       ab_index = group_info$ab_index,
       prev_index = group_info$prev_index,
       rep_idx = group_info$rep_idx,
