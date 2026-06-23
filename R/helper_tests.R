@@ -21,7 +21,7 @@ run.test <- function(data, label, test, conf, covar.mat=NULL){
   } else if (test == 'DESeq2'){
     if (!is.null(conf)) {
       stop("Test '", test, "' is not a confounder-aware test!") }
-    p.val <- test.DESeq(data=data, label=label)
+    p.val <- test.DESeq(data=data, label=label, conf=NULL, covar.mat=covar.mat)
   } else if (test == 'metagenomeSeq'){
     if (!is.null(conf)) {
       stop("Test '", test, "' is not a confounder-aware test!") }
@@ -41,7 +41,9 @@ run.test <- function(data, label, test, conf, covar.mat=NULL){
       stop("Test '", test, "' is strictly a confounder-aware test!") }
     p.val <- test.metadeconfoundR(data=data, label=label, type=2, conf=conf)
   } else if (test == 'edgeR'){
-    p.val <- test.edgeR(data=data, label=label)
+    if (!is.null(conf)) {
+      stop("Test '", test, "' is not a confounder-aware test!") }
+    p.val <- test.edgeR(data=data, label=label, conf=NULL, covar.mat=covar.mat)
   } else if (test == 'ZIBSeq'){
     p.val <- test.ZIBseq(data=data, label=label, conf=conf)
   } else if (test == 'ZIBSeq-sqrt'){
@@ -305,16 +307,29 @@ test.DESeq <- function(data, label){
 
   # convert to phyloseq object
   temp_otu <- phyloseq::otu_table(data, taxa_are_rows = TRUE)
-  temp_sample <- as.matrix(label)
+  temp_sample <- data.frame(label = label)
   rownames(temp_sample) <- colnames(data)
-  colnames(temp_sample) <- 'label'
-  temp_sample <- data.frame(temp_sample)
   temp_sample$label <- factor(temp_sample$label)
+  
+  # covariate pass-through takes precedence, mirroring test.lm()
+  if (!is.null(covar.mat)) {
+    covar_names <- colnames(covar.mat)
+    message("++ Received covariate pass-through for [", paste(covar_names, collapse=","), "]. Ignoring confounders.")
+    stopifnot(all(colnames(data) %in% rownames(covar.mat)))
+    temp_sample <- cbind(temp_sample, covar.mat[colnames(data), , drop = FALSE])
+    design_formula <- as.formula(paste0("~", paste(c(covar_names, "label"), collapse = "+")))
+    message("++ Using formula: ", deparse(design_formula))
+  } else {
+    design_formula <- ~label
+  }
+  
   physeq <- phyloseq::phyloseq(phyloseq::otu_table(temp_otu),
                                phyloseq::sample_data(temp_sample))
+  
   ####
   # taken from phyloseq vignette
   diagdds = phyloseq::phyloseq_to_deseq2(physeq, ~label)
+  
   # calculate geometric means prior to estimate size factors
   gm_mean = function(x, na.rm=TRUE){
     exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
@@ -322,7 +337,7 @@ test.DESeq <- function(data, label){
   geoMeans = apply(DESeq2::counts(diagdds), 1, gm_mean)
   diagdds = DESeq2::estimateSizeFactors(diagdds, geoMeans = geoMeans)
   diagdds = DESeq2::DESeq(diagdds, fitType="local")
-  res = DESeq2::results(diagdds)
+  res = DESeq2::results(diagdds, contrast = c("label", "1", "-1"))
 
   # p-values
   p.val <- rep(1, nrow(data))
@@ -421,7 +436,7 @@ test.MGS <- function(data, label, type=1, conf=NULL, covar.mat=NULL){
 }
 
 #' @keywords internal
-test.edgeR <- function(data, label){
+test.edgeR <- function(data, label, conf=NULL, covar.mat=NULL){
   
   test.package('edgeR')
 
@@ -430,7 +445,7 @@ test.edgeR <- function(data, label){
 
   # prepare count data
   nonzero.idx = which(rowSums(data) > 0)
-  f.counts = data[nonzero.idx,]
+  f.counts = data[nonzero.idx,, drop = FALSE]
   groups = rep('pos', ncol(f.counts))
   groups[label==-1] = 'neg'
   names(groups) = colnames(data)
@@ -441,12 +456,40 @@ test.edgeR <- function(data, label){
   if (any(t > 0)){
     y = edgeR::calcNormFactors(y, method='RLE')
   }
-  y = edgeR::estimateCommonDisp(y)
-  y = edgeR::estimateTagwiseDisp(y)
-  et = edgeR::exactTest(y)
-  res = edgeR::topTags(et, n=length(nonzero.idx), sort.by='none')
-  stopifnot(all(names(nonzero.idx) == rownames(res$table)))
-
+  
+  if (!is.null(covar.mat)) {
+    covar_names <- colnames(covar.mat)
+    message("++ Received covariate pass-through for [", paste(covar_names, collapse=","), "]. Ignoring confounders.")
+    stopifnot(all(colnames(data) %in% rownames(covar.mat)))
+    
+    sample_df <- data.frame(label = factor(label))
+    rownames(sample_df) <- colnames(data)
+    sample_df <- cbind(sample_df, covar.mat[colnames(data), , drop = FALSE])
+    
+    fo <- paste0("~label+", paste(covar_names, collapse = '+'))
+    message("++ Using formula: ", fo)
+    
+    design <- stats::model.matrix(stats::as.formula(fo), data = sample_df)
+    
+    y = edgeR::estimateDisp(y, design)
+    fit = edgeR::glmQLFit(y, design)
+    
+    label_coef <- grep("^label", colnames(design))
+    if (length(label_coef) != 1){
+      stop("Could not uniquely identify label coefficient in edgeR design matrix.")
+    }
+    
+    et = edgeR::glmQLFTest(fit, coef = label_coef)
+    res = edgeR::topTags(et, n=length(nonzero.idx), sort.by='none')
+    stopifnot(all(names(nonzero.idx) == rownames(res$table)))
+  }  else {
+    y = edgeR::estimateCommonDisp(y)
+    y = edgeR::estimateTagwiseDisp(y)
+    et = edgeR::exactTest(y)
+    res = edgeR::topTags(et, n=length(nonzero.idx), sort.by='none')
+    stopifnot(all(names(nonzero.idx) == rownames(res$table)))
+  }
+  
   # p-values
   p.val = rep(1.0, nrow(data))
   names(p.val) <- rownames(data)
@@ -456,7 +499,7 @@ test.edgeR <- function(data, label){
   eff.size <- rep(NA_real_, nrow(data))
   names(eff.size) <- rownames(data)
   eff.size[nonzero.idx] = res$table[,'logFC']
-
+  
   return(list(p.val=p.val, eff.size=eff.size))
 }
 
