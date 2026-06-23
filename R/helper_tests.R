@@ -408,7 +408,7 @@ test.MGS <- function(data, label, type=1, conf=NULL, covar.mat=NULL){
   mgs.obj = metagenomeSeq::cumNorm(mgs.obj, p=p)
 
   if (type==1){
-    settings = metagenomeSeq::zigControl(maxit=20, verbose=TRUE)
+    settings = metagenomeSeq::zigControl(maxit=20, verbose=FALSE)
     fit = metagenomeSeq::fitZig(mgs.obj, mod=mod, control=settings)
   } else if (type==2){
     fit = metagenomeSeq::fitFeatureModel(obj=mgs.obj, mod=mod)
