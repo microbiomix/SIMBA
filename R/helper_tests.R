@@ -297,7 +297,7 @@ test.ttest <- function(data, label){
 }
 
 #' @keywords internal
-test.DESeq <- function(data, label){
+test.DESeq <- function(data, label, conf=NULL, covar.mat=NULL){
   # based on vignette in phyloseq
   # https://www.bioconductor.org/packages/release/bioc/vignettes/phyloseq/inst/doc/phyloseq-mixture-models.html
   test.package('DESeq2')
