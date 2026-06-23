@@ -472,14 +472,14 @@ test.edgeR <- function(data, label, conf=NULL, covar.mat=NULL){
     design <- stats::model.matrix(stats::as.formula(fo), data = sample_df)
     
     y = edgeR::estimateDisp(y, design)
-    fit = edgeR::glmQLFit(y, design)
+    fit = edgeR::glmFit(y, design)
     
     label_coef <- grep("^label", colnames(design))
     if (length(label_coef) != 1){
       stop("Could not uniquely identify label coefficient in edgeR design matrix.")
     }
     
-    et = edgeR::glmQLFTest(fit, coef = label_coef)
+    et = edgeR::glmLRT(fit, coef = label_coef)
     res = edgeR::topTags(et, n=length(nonzero.idx), sort.by='none')
     stopifnot(all(names(nonzero.idx) == rownames(res$table)))
   }  else {
