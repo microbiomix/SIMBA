@@ -328,7 +328,7 @@ test.DESeq <- function(data, label, conf=NULL, covar.mat=NULL){
   
   ####
   # taken from phyloseq vignette
-  diagdds = phyloseq::phyloseq_to_deseq2(physeq, ~label)
+  diagdds = phyloseq::phyloseq_to_deseq2(physeq, design_formula)
   
   # calculate geometric means prior to estimate size factors
   gm_mean = function(x, na.rm=TRUE){
