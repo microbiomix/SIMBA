@@ -658,7 +658,7 @@ test.ANCOMBC <- function(data, label, conf=NULL, covar.mat=NULL){
   f.form <- 'label'
   s.data <- data.frame(label=label)
   if (!is.null(covar.mat)) {
-    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), sep=","), "]. Ignoring confounders.")
+    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), collapse=","), "]. Ignoring confounders.")
     f.form <- paste0(f.form, '+', paste(colnames(covar.mat), collapse = '+'))
     s.data <- cbind(s.data, covar.mat)
   } else if (!is.null(conf)) {
@@ -704,7 +704,7 @@ test.ANCOMBC2 <- function(data, label, conf, covar.mat){
   f.form <- 'label'
   s.data <- data.frame(label=label)
   if (!is.null(covar.mat)) {
-    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), sep=","), "]. Ignoring confounders.")
+    message("++ Received covariate pass-through for [", paste(colnames(covar.mat), collapse=","), "]. Ignoring confounders.")
     f.form <- paste0(f.form, '+', paste(colnames(covar.mat), collapse = '+'))
     s.data <- cbind(s.data, covar.mat)
   } else if (!is.null(conf)) {
@@ -857,7 +857,7 @@ test.lm <- function(data, label, conf, covar.mat){
   if (!is.null(covar.mat)){
     # browser()
     covar_names <- colnames(covar.mat)
-    message("++ Received covariate pass-through for ", covar_names, ". Ignoring confounders.")
+    message("++ Received covariate pass-through for [", paste(covar_names, collapse=","), "]. Ignoring confounders.")
     test.package('car')
     fo <- paste0("feat~label+", paste(covar_names, collapse = '+'))
     message("++ Using formula: ", fo)
