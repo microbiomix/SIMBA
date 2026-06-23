@@ -676,12 +676,9 @@ test.ANCOMBC2 <- function(data, label, conf, covar.mat){
   temp <- ANCOMBC::ancombc2(data = x.phylo,
                             fix_formula = f.form,
                             rand_formula = NULL,
-                            p_adj_method = "fdr",
+                            p_adj_method = "none",
                             prv_cut = 0.1,
                             lib_cut = 1000,
-                            group = "label",
-                            struc_zero = TRUE,
-                            neg_lb = TRUE,
                             alpha = 0.05
                             )
   # If taxa failed sensitivity analysis, then replace with p.val = 1
