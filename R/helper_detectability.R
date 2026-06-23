@@ -100,8 +100,7 @@ add_common_abundance_strata <- function(df,
 #   1. derive feature-level prevalence and baseline abundance
 #   2. standardize real DA results across methods
 #   3. estimate abundance-stratified local detectability thresholds
-#   4. summarize observed real effect-size envelopes
-#   5. create facet-grid plots for:
+#   4. create facet-grid plots for:
 #        - effect-size upper bounds
 #        - raw p-value distributions
 #
@@ -200,48 +199,6 @@ add_abundance_tertiles <- function(df,
   )
   
   df
-}
-
-
-#' Ensure that a calibration table contains abundance strata
-#'
-#' If \code{master_calib} already contains \code{abund_stratum}, it is returned
-#' unchanged except for factor ordering. Otherwise, the function looks for a
-#' baseline abundance column and constructs common tertiles.
-#'
-#' @param master_calib Calibration data frame.
-#' @param abundance_col_candidates Character vector of candidate abundance columns.
-#'
-#' @return Calibration data frame with factor column \code{abund_stratum}.
-#'
-ensure_calibration_abundance_strata <- function(
-    master_calib,
-    abundance_col_candidates = c(
-      "log10_abundance_nonzero_median_baseline",
-      "log10_abundance_nonzero_median"
-    )
-) {
-  stopifnot(is.data.frame(master_calib))
-  
-  if ("abund_stratum" %in% colnames(master_calib)) {
-    master_calib$abund_stratum <- factor(
-      master_calib$abund_stratum,
-      levels = c("Low", "Medium", "High")
-    )
-    return(master_calib)
-  }
-  
-  abundance_col <- intersect(abundance_col_candidates, colnames(master_calib))
-  if (length(abundance_col) == 0) {
-    stop(
-      "master_calib must contain either 'abund_stratum' or one of these abundance columns: ",
-      paste(shQuote(abundance_col_candidates), collapse = ", ")
-    )
-  }
-  
-  out <- add_abundance_tertiles(master_calib, abundance_col = abundance_col[1])
-  out$abund_stratum <- factor(out$abund_stratum, levels = c("Low", "Medium", "High"))
-  out
 }
 
 
@@ -407,321 +364,6 @@ build_real_effect_df <- function(real_results_list,
 # ------------------------------------------------------------
 # 3. Local prevalence-matched summaries for calibration
 # ------------------------------------------------------------
-
-#' Fit local detectability thresholds stratified by abundance
-#'
-#' For each method and abundance stratum, fits a local logistic detection model
-#' in moving prevalence windows and inverts it to estimate the effect size
-#' threshold corresponding to target detection probabilities.
-#'
-#' @param calib_df Calibration table. Must contain columns:
-#'   \code{test}, \code{is_marker}, \code{detected}, \code{abs_effect_size},
-#'   \code{prevalence_full}, and \code{abund_stratum}.
-#' @param probs Numeric vector of target detection probabilities.
-#' @param prev_grid Numeric vector of prevalence grid values at which local
-#'   thresholds are estimated.
-#' @param prevalence_col Character scalar naming the prevalence column in
-#'   \code{calib_df}.
-#' @param bandwidth Numeric half-width of the local prevalence window.
-#' @param abundance_stratum_col Character scalar naming the abundance stratum column.
-#' @param min_n Minimum number of taxa required in a local window.
-#' @param min_detected Minimum number of detected taxa required in a local window.
-#' @param grid_length Number of grid points used when inverting the detection curve.
-#'
-#' @return A tibble with columns including \code{test}, \code{abund_stratum},
-#'   \code{prev_mid}, \code{target_prob}, and \code{threshold}.
-#'
-fit_detection_thresholds_local_abundance <- function(
-    calib_df,
-    probs = c(0.5, 0.8, 0.95),
-    prev_grid = seq(0.10, 0.95, by = 0.05),
-    prevalence_col = "prevalence_full",
-    bandwidth = 0.08,
-    abundance_stratum_col = "abund_stratum",
-    min_n = 100,
-    min_detected = 20,
-    grid_length = 500
-) {
-  calib_df %>%
-    dplyr::filter(
-      is_marker,
-      !is.na(abs_effect_size),
-      !is.na(detected),
-      !is.na(.data[[prevalence_col]]),
-      !is.na(.data[[abundance_stratum_col]])
-    ) %>%
-    dplyr::group_by(test, .data[[abundance_stratum_col]]) %>%
-    dplyr::group_modify(function(.x, .y) {
-      purrr::map_dfr(prev_grid, function(p0) {
-        # Local prevalence window around p0
-        sub <- .x %>%
-          dplyr::filter(abs(.data[[prevalence_col]] - p0) <= bandwidth) %>%
-          dplyr::filter(is.finite(abs_effect_size), !is.na(detected))
-        
-        n_all <- nrow(sub)
-        n_det <- sum(sub$detected, na.rm = TRUE)
-        
-        if (n_all < min_n || n_det < min_detected) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            target_prob = probs,
-            threshold = NA_real_,
-            n = n_all,
-            n_detected = n_det
-          ))
-        }
-        
-        # Spline if enough unique effect-size values; otherwise fall back to linear.
-        u_eff <- sort(unique(sub$abs_effect_size[is.finite(sub$abs_effect_size)]))
-        n_uniq <- length(u_eff)
-        
-        form <- if (n_uniq >= 6) {
-          stats::as.formula(as.numeric(detected) ~ splines::ns(abs_effect_size, df = 3))
-        } else if (n_uniq >= 4) {
-          stats::as.formula(as.numeric(detected) ~ abs_effect_size)
-        } else {
-          NULL
-        }
-        
-        if (is.null(form)) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            target_prob = probs,
-            threshold = NA_real_,
-            n = n_all,
-            n_detected = n_det
-          ))
-        }
-        
-        fit <- tryCatch(
-          stats::glm(form, data = sub, family = stats::binomial()),
-          error = function(e) NULL
-        )
-        
-        if (is.null(fit)) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            target_prob = probs,
-            threshold = NA_real_,
-            n = n_all,
-            n_detected = n_det
-          ))
-        }
-        
-        x_grid <- seq(0, max(sub$abs_effect_size, na.rm = TRUE), length.out = grid_length)
-        
-        pred <- stats::predict(
-          fit,
-          newdata = data.frame(abs_effect_size = x_grid),
-          type = "response"
-        )
-        
-        purrr::map_dfr(probs, function(p_target) {
-          idx <- which(pred >= p_target)
-          tibble::tibble(
-            prev_mid = p0,
-            target_prob = p_target,
-            threshold = if (length(idx) == 0) NA_real_ else x_grid[min(idx)],
-            n = n_all,
-            n_detected = n_det
-          )
-        })
-      })
-    }) %>%
-    dplyr::ungroup() %>%
-    dplyr::rename(abund_stratum = !!abundance_stratum_col)
-}
-
-#' Fit local detectability thresholds stratified by abundance using empirical monotone calibration
-#'
-#' This is a drop-in empirical replacement for fit_detection_thresholds_local_abundance().
-#' Instead of a logistic model, it uses isotonic regression to estimate a monotone
-#' detection probability curve as a function of absolute effect size.
-#'
-#' @param calib_df Calibration table. Must contain columns:
-#'   \code{test}, \code{is_marker}, \code{detected}, \code{abs_effect_size},
-#'   \code{prevalence_full}, and \code{abund_stratum}.
-#' @param probs Numeric vector of target detection probabilities.
-#' @param prev_grid Numeric vector of prevalence grid values at which local
-#'   thresholds are estimated.
-#' @param prevalence_col Character scalar naming the prevalence column in
-#'   \code{calib_df}.
-#' @param bandwidth Numeric half-width of the local prevalence window.
-#' @param abundance_stratum_col Character scalar naming the abundance stratum column.
-#' @param min_n Minimum number of taxa required in a local window.
-#' @param min_detected Minimum number of detected taxa required in a local window.
-#' @param min_unique_effects Minimum number of unique effect sizes required in a
-#'   local window to fit a meaningful monotone empirical curve.
-#'
-#' @return A tibble with columns including \code{test}, \code{abund_stratum},
-#'   \code{prev_mid}, \code{target_prob}, and \code{threshold}.
-#'
-fit_detection_thresholds_local_abundance_empirical <- function(
-    calib_df,
-    probs = c(0.5, 0.8, 0.95),
-    prev_grid = seq(0.10, 0.95, by = 0.05),
-    prevalence_col = "prevalence_full",
-    bandwidth = 0.08,
-    abundance_stratum_col = "abund_stratum",
-    min_n = 100,
-    min_detected = 20,
-    min_unique_effects = 6
-) {
-  calib_df %>%
-    dplyr::filter(
-      is_marker,
-      !is.na(abs_effect_size),
-      !is.na(detected),
-      !is.na(.data[[prevalence_col]]),
-      !is.na(.data[[abundance_stratum_col]])
-    ) %>%
-    dplyr::group_by(test, .data[[abundance_stratum_col]]) %>%
-    dplyr::group_modify(function(.x, .y) {
-      purrr::map_dfr(prev_grid, function(p0) {
-        # Local prevalence window
-        sub <- .x %>%
-          dplyr::filter(abs(.data[[prevalence_col]] - p0) <= bandwidth) %>%
-          dplyr::filter(is.finite(abs_effect_size), !is.na(detected))
-        
-        n_all <- nrow(sub)
-        n_det <- sum(sub$detected, na.rm = TRUE)
-        
-        if (n_all < min_n || n_det < min_detected) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            target_prob = probs,
-            threshold = NA_real_,
-            n = n_all,
-            n_detected = n_det,
-            fit_type = "empirical_isotonic"
-          ))
-        }
-        
-        # Sort by effect size
-        sub <- sub %>%
-          dplyr::arrange(abs_effect_size)
-        
-        x <- sub$abs_effect_size
-        y <- as.numeric(sub$detected)
-        
-        # Need enough unique effect-size support
-        n_uniq <- length(unique(x))
-        if (n_uniq < min_unique_effects) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            target_prob = probs,
-            threshold = NA_real_,
-            n = n_all,
-            n_detected = n_det,
-            fit_type = "empirical_isotonic"
-          ))
-        }
-        
-        # Empirical monotone fit of detection probability vs effect size
-        iso <- tryCatch(
-          stats::isoreg(x = x, y = y),
-          error = function(e) NULL
-        )
-        
-        if (is.null(iso)) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            target_prob = probs,
-            threshold = NA_real_,
-            n = n_all,
-            n_detected = n_det,
-            fit_type = "empirical_isotonic"
-          ))
-        }
-        
-        # Fitted values are stepwise and monotone nondecreasing
-        fitted_prob <- pmin(pmax(iso$yf, 0), 1)
-        
-        purrr::map_dfr(probs, function(p_target) {
-          idx <- which(fitted_prob >= p_target)
-          tibble::tibble(
-            prev_mid = p0,
-            target_prob = p_target,
-            threshold = if (length(idx) == 0) NA_real_ else x[min(idx)],
-            n = n_all,
-            n_detected = n_det,
-            fit_type = "empirical_isotonic"
-          )
-        })
-      })
-    }) %>%
-    dplyr::ungroup() %>%
-    dplyr::rename(abund_stratum = !!abundance_stratum_col)
-}
-
-#' Summarize the local observed effect-size envelope stratified by abundance
-#'
-#' Computes local quantiles of the observed real effect-size distribution in
-#' moving prevalence windows for each method and abundance stratum.
-#'
-#' @param real_df Real-data result table containing \code{test}, \code{prevalence},
-#'   \code{abs_effect_size}, and \code{abund_stratum}.
-#' @param prev_grid Numeric vector of prevalence grid values.
-#' @param bandwidth Numeric half-width of the local prevalence window.
-#' @param abundance_stratum_col Character scalar naming the abundance stratum column.
-#' @param min_n Minimum number of taxa required in a local window.
-#'
-#' @return A tibble with local q50/q90/q95/q99 summaries.
-#'
-summarise_real_effect_envelope_local_abundance <- function(
-    real_df,
-    prev_grid = seq(0.10, 0.95, by = 0.05),
-    bandwidth = 0.08,
-    abundance_stratum_col = "abund_stratum",
-    min_n = 30
-) {
-  real_df %>%
-    dplyr::filter(
-      !is.na(prevalence),
-      !is.na(abs_effect_size),
-      !is.na(.data[[abundance_stratum_col]])
-    ) %>%
-    dplyr::group_by(test, .data[[abundance_stratum_col]]) %>%
-    dplyr::group_modify(function(.x, .y) {
-      purrr::map_dfr(prev_grid, function(p0) {
-        sub <- .x %>%
-          dplyr::filter(abs(prevalence - p0) <= bandwidth)
-        
-        # Fallback to nearest min_n taxa if the local window is sparse.
-        if (nrow(sub) < min_n && nrow(.x) >= min_n) {
-          sub <- .x %>%
-            dplyr::mutate(dist_prev = abs(prevalence - p0)) %>%
-            dplyr::arrange(dist_prev) %>%
-            dplyr::slice_head(n = min_n)
-        }
-        
-        n_taxa <- nrow(sub)
-        
-        if (n_taxa == 0) {
-          return(tibble::tibble(
-            prev_mid = p0,
-            n_taxa = 0,
-            q50 = NA_real_,
-            q90 = NA_real_,
-            q95 = NA_real_,
-            q99 = NA_real_
-          ))
-        }
-        
-        tibble::tibble(
-          prev_mid = p0,
-          n_taxa = n_taxa,
-          q50 = stats::quantile(sub$abs_effect_size, 0.50, na.rm = TRUE),
-          q90 = stats::quantile(sub$abs_effect_size, 0.90, na.rm = TRUE),
-          q95 = stats::quantile(sub$abs_effect_size, 0.95, na.rm = TRUE),
-          q99 = stats::quantile(sub$abs_effect_size, 0.99, na.rm = TRUE)
-        )
-      })
-    }) %>%
-    dplyr::ungroup() %>%
-    dplyr::rename(abund_stratum = !!abundance_stratum_col)
-}
-
 
 #' Summarize the local p-value envelope stratified by abundance
 #'
@@ -1028,25 +670,21 @@ predict_detectability_boundary_abundance <- function(
 #' \itemize{
 #'   \item grey points: all real taxa
 #'   \item red points: significant real taxa
-#'   \item blue dashed line: model-based detectability boundary
-#'   \item black line: local real-data upper envelope
+#'   \item magenta line: model-based detectability boundary
 #' }
 #'
 #' @param res_bound List returned by
 #'   \code{run_casecontrol_upper_bound_abundance()}.
 #' @param methods Optional character vector of methods to plot. Defaults to all
 #'   methods present in \code{res_bound$real_df}.
-#' @param envelope_stat Character scalar naming which envelope to plot.
-#'   Supported values are \code{"q50"}, \code{"q90"}, \code{"q95"}, and
-#'   \code{"q99"}.
 #' @param point_alpha Alpha for grey real-data points.
 #' @param point_size Point size for real-data points.
 #' @param detected_point_size Point size for red detected points.
 #' @param threshold_linewidth Line width for the blue boundary.
-#' @param envelope_linewidth Line width for the black envelope.
 #' @param facet_scales Passed to \code{facet_grid()}.
+#' @param significant_label Label used in the legend for the significant taxa.
+#' @param insignificant_label Label used in the legend for the insignificant taxa.
 #' @param threshold_label Label used in the legend for the blue boundary.
-#' @param envelope_label Label used in the legend for the black envelope.
 #'
 #' @return A ggplot object.
 plot_effect_size_upper_bounds_abundance <- function(
@@ -1062,7 +700,7 @@ plot_effect_size_upper_bounds_abundance <- function(
     threshold_label = "80% detectability boundary (stratum)"
 ) {
   stopifnot(is.list(res_bound))
-  stopifnot(all(c("real_df", "envelope_df", "thresh_df") %in% names(res_bound)))
+  stopifnot(all(c("real_df", "thresh_df") %in% names(res_bound)))
   
   real_df <- res_bound$real_df
   thresh_df <- res_bound$thresh_df
@@ -1834,7 +1472,6 @@ plot_unified_detectability_abundance <- function(
 #' The returned object contains:
 #' \itemize{
 #'   \item \code{real_df}: standardized real-data effect table with abundance strata
-#'   \item \code{envelope_df}: local observed effect-size envelope in real data
 #'   \item \code{thresh_df}: model-based detectability boundary
 #'   \item \code{boundary_models}: fitted detectability models by method
 #'   \item \code{abundance_ref_df}: representative abundance values per stratum
@@ -1851,8 +1488,6 @@ plot_unified_detectability_abundance <- function(
 #'   boundary. Defaults to 0.8.
 #' @param adjust Multiple-testing adjustment applied to real results before
 #'   flagging real detections.
-#' @param envelope_stat Character scalar naming which real-data envelope column
-#'   should be emphasized later in plotting. Defaults to \code{"q95"}.
 #' @param prev_grid Numeric vector of prevalence grid values used both for the
 #'   model-based boundary and the local real-data envelope.
 #' @param envelope_bandwidth Half-width of the local prevalence window used for
@@ -1870,7 +1505,7 @@ plot_unified_detectability_abundance <- function(
 #' @param effect_upper_quantile Upper simulated effect-size quantile used to
 #'   define the numerical inversion range for the model-based boundary.
 #'
-#' @return A list with components \code{real_df}, \code{envelope_df},
+#' @return A list with components \code{real_df}, 
 #'   \code{thresh_df}, \code{boundary_models}, and \code{abundance_ref_df}.
 run_casecontrol_upper_bound_abundance <- function(
     master_calib,
@@ -1880,9 +1515,7 @@ run_casecontrol_upper_bound_abundance <- function(
     prevalence = NULL,
     target_prob = 0.8,
     adjust = "none",
-    envelope_stat = "q95",
     prev_grid = seq(0.10, 0.95, by = 0.05),
-    envelope_bandwidth = 0.08,
     alpha = 0.05,
     abundance_col = "log10_abundance_nonzero_median_baseline",
     abundance_col_real_name = "log10_abundance_nonzero_median",
@@ -1982,20 +1615,8 @@ run_casecontrol_upper_bound_abundance <- function(
   
   thresh_df$abund_stratum <- factor(thresh_df$abund_stratum, levels = abundance_labels)
   
-  # Keep the real-data local envelope exactly as before.
-  envelope_df <- summarise_real_effect_envelope_local_abundance(
-    real_df = real_df,
-    prev_grid = prev_grid,
-    bandwidth = envelope_bandwidth,
-    abundance_stratum_col = "abund_stratum"
-  )
-  
-  envelope_df$abund_stratum <- factor(envelope_df$abund_stratum, levels = abundance_labels)
-  envelope_df$envelope_stat <- envelope_stat
-  
   list(
     real_df = real_df,
-    envelope_df = envelope_df,
     thresh_df = thresh_df,
     boundary_models = boundary_models,
     abundance_ref_df = abundance_ref_df
