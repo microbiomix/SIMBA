@@ -459,7 +459,7 @@ fit_detectability_boundary_models_abundance <- function(
     min_rows = 50,
     formula = detected_bin ~ effect + prevalence + abundance
 ) {
-  library("mgcv")
+  test.package("mgcv")
   
   req <- c("test", "is_marker", "detected", "abs_effect_size", prevalence_col, abundance_col)
   miss <- setdiff(req, colnames(calib_df))
@@ -662,11 +662,10 @@ predict_detectability_boundary_abundance <- function(
 
 #' Plot abundance-stratified real effects against a model-based detectability boundary
 #'
-#' This is a drop-in replacement for the previous
-#' \code{plot_effect_size_upper_bounds_abundance()} function. It expects the
-#' output of the redesigned \code{run_casecontrol_upper_bound_abundance()} and
-#' keeps the same overall visual structure:
-#'
+#' Creates a facet-grid plot with methods in rows and abundance strata in columns.
+#' Grey points show all real taxa, red points show detected taxa (if any), the
+#' magenta line shows the simulation-derived 80% detection threshold.
+#'#'
 #' \itemize{
 #'   \item grey points: all real taxa
 #'   \item red points: significant real taxa
@@ -687,6 +686,9 @@ predict_detectability_boundary_abundance <- function(
 #' @param threshold_label Label used in the legend for the blue boundary.
 #'
 #' @return A ggplot object.
+#' 
+#' @export
+#'
 plot_effect_size_upper_bounds_abundance <- function(
     res_bound,
     methods = NULL,
@@ -1163,6 +1165,9 @@ plot_simulation_detectability_cloud_abundance <- function(
 #' @param real_label Legend label for real positive taxa.
 #'
 #' @return A ggplot object.
+#' 
+#' @export
+#'
 plot_unified_detectability_abundance <- function(
     res_bound,
     master_calib,
@@ -1507,6 +1512,10 @@ plot_unified_detectability_abundance <- function(
 #'
 #' @return A list with components \code{real_df}, 
 #'   \code{thresh_df}, \code{boundary_models}, and \code{abundance_ref_df}.
+#'
+#' @export
+#' 
+
 run_casecontrol_upper_bound_abundance <- function(
     master_calib,
     feat_real,

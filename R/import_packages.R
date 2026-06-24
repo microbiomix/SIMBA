@@ -9,5 +9,8 @@
 #' @importFrom stats fisher.test formula kruskal.test ks.test lm model.matrix
 #' @importFrom stats na.omit p.adjust pnorm qnbinom quantile residuals
 #' @importFrom stats rgamma rmultinom rnbinom sd t.test var wilcox.test
+#' @importFrom mgcv gam
+#' @importFrom broom.mixed tidy
+#' @importFrom coin wilcox_test
 
 NULL
