@@ -718,18 +718,39 @@ plot_effect_size_upper_bounds_abundance <- function(
     dplyr::filter(test %in% methods) %>%
     mutate(col_label = "Abundance stratum")
 
+  colour_breaks <- insignificant_label
+  
+  if (any(real_df$detected, na.rm = TRUE)) {
+    colour_breaks <- c(colour_breaks, significant_label)
+  }
+  
+  colour_values <- stats::setNames(
+    c("#9E9E9E", "#BE5302"),
+    c(insignificant_label, significant_label)
+  )
+  
+  colour_legend_size <- stats::setNames(
+    c(2, 3),
+    c(insignificant_label, significant_label)
+  )
+  
+  colour_legend_alpha <- stats::setNames(
+    c(1, 1),
+    c(insignificant_label, significant_label)
+  )
+  
   p <- ggplot2::ggplot() +
     # All real taxa
     ggplot2::geom_point(
       data = real_df,
-      ggplot2::aes(x = prevalence, y = abs_effect_size, colour = insignificant_label),
+      ggplot2::aes(x = prevalence, y = abs_effect_size, colour = .env$insignificant_label),
       alpha = point_alpha,
       size = point_size
     ) +
     # Significant real taxa
     ggplot2::geom_point(
       data = real_df %>% dplyr::filter(detected),
-      ggplot2::aes(x = prevalence, y = abs_effect_size, colour = significant_label),
+      ggplot2::aes(x = prevalence, y = abs_effect_size, colour = .env$significant_label),
       size = detected_point_size
     ) +
     # Model-based boundary
@@ -749,10 +770,8 @@ plot_effect_size_upper_bounds_abundance <- function(
       name = NULL
     ) +
     ggplot2::scale_colour_manual(
-      values = stats::setNames(
-        c("#9E9E9E", "#BE5302"),
-        c(insignificant_label, significant_label)
-      ),
+      values = colour_values,
+      breaks = colour_breaks,
       name = NULL
     ) +
     ggplot2::labs(
@@ -764,8 +783,8 @@ plot_effect_size_upper_bounds_abundance <- function(
         nrow = 2,
         byrow = TRUE,
         override.aes = list(
-          size = c(3, 2),
-          alpha = c(1, 1)
+          size = unname(colour_legend_size[colour_breaks]),
+          alpha = unname(colour_legend_alpha[colour_breaks])
         )
       ),
       linetype = guide_legend(
@@ -1343,19 +1362,43 @@ plot_unified_detectability_abundance <- function(
     }
   )
   
-  exact_thresh_df$abund_stratum <- factor(exact_thresh_df$abund_stratum, levels = abundance_labels)
+  if (nrow(exact_thresh_df) > 0) {
+    exact_thresh_df$abund_stratum <- factor(exact_thresh_df$abund_stratum, levels = abundance_labels)
+  }
   
   # ------------------------------------------------------------
   # 5. Plot
   # ------------------------------------------------------------
-  ggplot2::ggplot() +
+  
+  colour_breaks <- c(missed_label, detected_label)
+  
+  if (any(real_df$detected, na.rm = TRUE)) {
+    colour_breaks <- c(colour_breaks, real_label)
+  }
+  
+  colour_values <- stats::setNames(
+    c("#C9C9C9", "#B3CDE3", "#BE5302"),
+    c(missed_label, detected_label, real_label)
+  )
+  
+  colour_legend_size <- stats::setNames(
+    c(2, 3, 2),
+    c(missed_label, detected_label, real_label)
+  )
+  
+  colour_legend_alpha <- stats::setNames(
+    c(1, 1, 1),
+    c(missed_label, detected_label, real_label)
+  )
+  
+  p <- ggplot2::ggplot() +
     # Missed simulated markers first
     ggplot2::geom_point(
       data = sim_df %>% dplyr::filter(!detected),
       ggplot2::aes(
         x = prevalence,
         y = abs_effect_size,
-        colour = missed_label
+        colour = .env$missed_label
       ),
       alpha = point_alpha_missed,
       size = point_size_missed
@@ -1366,7 +1409,7 @@ plot_unified_detectability_abundance <- function(
       ggplot2::aes(
         x = prevalence,
         y = abs_effect_size,
-        colour = detected_label
+        colour = .env$detected_label
       ),
       alpha = point_alpha_detected,
       size = point_size_detected
@@ -1377,41 +1420,44 @@ plot_unified_detectability_abundance <- function(
       ggplot2::aes(
         x = prev_mid,
         y = threshold,
-        linetype = stratum_label
+        linetype = .env$stratum_label
       ),
       colour = "#8E1F63",
       linewidth = stratum_linewidth,
       na.rm = TRUE
-    ) +
-    # Exact-abundance boundary
-    ggplot2::geom_line(
-      data = exact_thresh_df,
-      ggplot2::aes(
-        x = prev_mid,
-        y = threshold,
-        group = interaction(test, abund_stratum, feature),
-        linetype = exact_label
-      ),
-      colour = "#CC6D00",
-      linewidth = exact_linewidth,
-      na.rm = TRUE
-    ) +
-    # Real positive taxa
-    ggplot2::geom_point(
-      data = real_pos_df,
-      ggplot2::aes(
-        x = prevalence,
-        y = abs_effect_size,
-        colour = real_label
-      ),
-      size = real_point_size
-    ) +
+    )
+  
+  # Exact-abundance boundary
+  if (nrow(exact_thresh_df) > 0) {
+    p <- p +
+      ggplot2::geom_line(
+        data = exact_thresh_df,
+        ggplot2::aes(
+          x = prev_mid,
+          y = threshold,
+          group = interaction(test, abund_stratum, feature),
+          linetype = .env$exact_label
+        ),
+        colour = "#CC6D00",
+        linewidth = exact_linewidth,
+        na.rm = TRUE
+      )
+  }
+  
+  # Real positive taxa
+  p <- p + ggplot2::geom_point(
+    data = real_pos_df,
+    ggplot2::aes(
+      x = prevalence,
+      y = abs_effect_size,
+      colour = .env$real_label
+    ),
+    size = real_point_size
+  ) +
     ggh4x::facet_nested(test ~ col_label + abund_stratum, scales = facet_scales) +
     ggplot2::scale_colour_manual(
-      values = stats::setNames(
-        c("#C9C9C9", "#B3CDE3", "#BE5302"),
-        c(missed_label, detected_label, real_label)
-      ),
+      values = colour_values,
+      breaks = colour_breaks,
       name = NULL
     ) +
     ggplot2::scale_linetype_manual(
@@ -1429,18 +1475,15 @@ plot_unified_detectability_abundance <- function(
       linetype = guide_legend(
         order = 1,
         nrow = 1,
-        byrow = TRUE,
-        override.aes = list(
-          linewidth = c(1.1, 0.9)
-          )
-        ),
+        byrow = TRUE
+      ),
       colour = guide_legend(
         order = 2,
         nrow = 2,
         byrow = TRUE,
         override.aes = list(
-          size = c(2, 3, 2),
-          alpha = c(1, 1, 1)
+          size = unname(colour_legend_size[colour_breaks]),
+          alpha = unname(colour_legend_alpha[colour_breaks])
         )
       )
     ) +
@@ -1460,7 +1503,7 @@ plot_unified_detectability_abundance <- function(
       legend.key.height = grid::unit(0.45, "lines"),
       panel.grid.minor = ggplot2::element_blank()
     )
-  
+  p
 }
 
 # ------------------------------------------------------------
